@@ -5,9 +5,6 @@
 		"namelocked": "namelocked",
 		"locked": "locked",
 
-		"autoconfirmed": "verificados",
-		"trusted": "confiáveis",
-
 		"Please follow the rules:": "Por favor siga as regras:",
 		"[TN: Link to the PS rules for your language (path after pokemonshowdown.com]/rules": "/pages/rules-pt",
 		"Global Rules": "Regras Globais",
@@ -15,10 +12,11 @@
 
 		"<strong>Global ranks</strong>": "<strong>Cargos Globais</strong>",
 		"+ <strong>Global Voice</strong> - They can use ! commands like !groups": "+ <strong>Global Voice</strong> - Eles podem usar comandos com !, tal como !groups",
-		"% <strong>Global Driver</strong> - The above, and they can also lock users and check for alts": "% <strong>Global Driver</strong> - O de cima, além de poderem dar locks e verificar contas alternativas",
-		"@ <strong>Global Moderator</strong> - The above, and they can globally ban users": "@ <strong>Global Moderator</strong> - O de cima, além de poderem banir usuários do servidor",
+		"% <strong>Global Driver</strong> - The above, and they can also lock users and check for alts": "% <strong>Global Driver</strong> - O de acima, além de poderem dar locks e verificar contas alternativas",
+		"@ <strong>Global Moderator</strong> - The above, and they can globally ban users": "@ <strong>Global Moderator</strong> - O de cima, e banir usuários do servidor",
 		"* <strong>Global Bot</strong> - Like Moderator, but makes it clear that this user is a bot": "* <strong>Global Bot</strong> - Igual ao cargo de Moderator, mas deixa claro que o usuário é um bot",
-		"&amp; <strong>Global Administrator</strong> - They can do anything, like change what this message says and promote users globally": "&amp; <strong>Global Administrator</strong> - Eles podem fazer qualquer coisa, como mudar o que esta mensagem diz",
+		"&amp; <strong>Global Leader</strong> - The above, and they can promote to global moderator and force ties": "&amp; <strong>Global Leader</strong> - O de cima, e promover usuários a global moderator e forçar empates",
+		"~ <strong>Global Administrator</strong> -  They can do anything, like change what this message says": "~ <strong>Global Administrator</strong> - Eles podem fazer qualquer coisa, como mudar o que esta mensagem diz",
 
 		"<strong>Room ranks</strong>": "<strong>Cargos da Sala</strong>",
 		"+ <strong>Voice</strong> - They can use ! commands like !groups": "+ <strong>Voice</strong> - Eles podem usar comandos com !, tal como !groups",
@@ -38,9 +36,9 @@
 		"DATA COMMANDS": "COMANDOS DE DADOS",
 		"DRIVER COMMANDS": "COMANDOS DE DRIVER",
 		"MODERATOR COMMANDS": "COMANDOS DE MODERATOR",
-		"ADMIN COMMANDS": "COMANDOS DE ADMINISTRATOR",
+		"LEADER COMMANDS": "COMANDOS DE LEADER",
 
-		"(replace / with ! to broadcast. Broadcasting requires: + % @ # &)": "(substitua / por ! para exibir um comando publicamente. Isso requer: + % @ # &)",
+		"(replace / with ! to broadcast. Broadcasting requires: + % @ # & ~)": "(substitua / por ! para exibir um comando publicamente. Isso requer: + % @ # & ~)",
 
 		"<strong>Room punishments</strong>:": "<strong>Puni&ccedil;&otilde;es da sala</strong>",
 		"<strong>warn</strong> - Displays a popup with the rules.": "<strong>warn</strong> - Faz uma mensagem com as regras aparecer.",
@@ -119,17 +117,6 @@
 
 		"Your message contained banned words in this room.": "Sua mensagem continha palavras banidas nesta sala.",
 		"You can't send the same message again so soon.": "Você não pode enviar a mesma mensagem de novo tão cedo.",
-		"Due to this room being a high traffic room, your message must contain at least two letters.": "Como esta sala contém um grande tráfego de mensagens, sua mensagem deve conter no mínimo duas letras.",
-
-		"You are already blocking private messages! To unblock, use /unblockpms": "Você já está bloqueando mensagens privadas! Para desbloqueá-las, utilize /unblockpms",
-		"You are now blocking private messages, except from staff and ${rank}.": "Agora você está bloqueando mensagens privadas, exceto de staff e de usuários ${rank}.",
-		"You are now blocking private messages, except from staff and ${status} users.": "Agora você está bloqueando mensagens privadas, exceto de staff e de usuários ${status}.",
-		"You are now blocking private messages, except from staff.": "Agora você está bloqueando mensagens privadas, exceto de staff.",
-		"You are not blocking private messages! To block, use /blockpms": "Você não está bloqueando mensagens privadas! Para bloqueá-las, utilize /blockpms",
-		"You are no longer blocking private messages.": "Você não está mais bloqueando mensagens privadas.",
-		"You are now blocking all incoming challenge requests.": "Agora você está bloqueando todos os pedidos de desafio.",
-		"You are already blocking challenges!": "Você já está bloqueando desafios",
-		"You are already available for challenges!": "Você já está disponível para desafios!",
-		"You are available for challenges from now on.": "Você está disponível para desafios a partir de agora."
+		"Due to this room being a high traffic room, your message must contain at least two letters.": "Como esta sala contém um grande tráfego de mensagens, sua mensagem deve conter no mínimo duas letras."
 	}
 }

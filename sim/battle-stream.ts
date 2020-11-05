@@ -18,11 +18,11 @@ import {Battle} from './battle';
  *
  * `"1 2 3 4".split(" ", 2) => ["1", "2"]`
  *
- * `Utils.splitFirst("1 2 3 4", " ", 1) => ["1", "2 3 4"]`
+ * `Chat.splitFirst("1 2 3 4", " ", 1) => ["1", "2 3 4"]`
  *
  * Returns an array of length exactly limit + 1.
  */
-function splitFirst(str: string, delimiter: string, limit = 1) {
+function splitFirst(str: string, delimiter: string, limit: number = 1) {
 	const splitStr: string[] = [];
 	while (splitStr.length < limit) {
 		const delimiterIndex = str.indexOf(delimiter);
@@ -40,14 +40,12 @@ function splitFirst(str: string, delimiter: string, limit = 1) {
 
 export class BattleStream extends Streams.ObjectReadWriteStream<string> {
 	debug: boolean;
-	replay: boolean;
 	keepAlive: boolean;
 	battle: Battle | null;
 
-	constructor(options: {debug?: boolean, keepAlive?: boolean, replay?: boolean} = {}) {
+	constructor(options: {debug?: boolean, keepAlive?: boolean} = {}) {
 		super();
 		this.debug = !!options.debug;
-		this.replay = !!options.replay;
 		this.keepAlive = !!options.keepAlive;
 		this.battle = null;
 	}
@@ -56,7 +54,7 @@ export class BattleStream extends Streams.ObjectReadWriteStream<string> {
 		try {
 			this._writeLines(chunk);
 		} catch (err) {
-			this.pushError(err, true);
+			this.pushError(err);
 			return;
 		}
 		if (this.battle) this.battle.sendUpdates();
@@ -71,24 +69,14 @@ export class BattleStream extends Streams.ObjectReadWriteStream<string> {
 		}
 	}
 
-	pushMessage(type: string, data: string) {
-		if (this.replay) {
-			if (type === 'update') {
-				this.push(data.replace(/\n\|split\|p[1234]\n([^\n]*)\n(?:[^\n]*)/g, '\n$1'));
-			}
-			return;
-		}
-		this.push(`${type}\n${data}`);
-	}
-
 	_writeLine(type: string, message: string) {
 		switch (type) {
 		case 'start':
 			const options = JSON.parse(message);
 			options.send = (t: string, data: any) => {
 				if (Array.isArray(data)) data = data.join("\n");
-				this.pushMessage(t, data);
-				if (t === 'end' && !this.keepAlive) this.pushEnd();
+				this.push(`${t}\n${data}`);
+				if (t === 'end' && !this.keepAlive) this.push(null);
 			};
 			if (this.debug) options.debug = true;
 			this.battle = new Battle(options);
@@ -117,9 +105,9 @@ export class BattleStream extends Streams.ObjectReadWriteStream<string> {
 		}
 	}
 
-	_writeEnd() {
-		// if battle already ended, we don't need to pushEnd.
-		if (!this.atEOF) this.pushEnd();
+	_end() {
+		// this is in theory synchronous...
+		this.push(null);
 		this._destroy();
 	}
 
@@ -136,33 +124,33 @@ export function getPlayerStreams(stream: BattleStream) {
 	const streams = {
 		omniscient: new Streams.ObjectReadWriteStream({
 			write(data: string) {
-				void stream.write(data);
+				stream.write(data);
 			},
-			writeEnd() {
-				return stream.writeEnd();
+			end() {
+				return stream.end();
 			},
 		}),
-		spectator: new Streams.ObjectReadStream<string>({
+		spectator: new Streams.ObjectReadStream({
 			read() {},
 		}),
 		p1: new Streams.ObjectReadWriteStream({
 			write(data: string) {
-				void stream.write(data.replace(/(^|\n)/g, `$1>p1 `));
+				stream.write(data.replace(/(^|\n)/g, `$1>p1 `));
 			},
 		}),
 		p2: new Streams.ObjectReadWriteStream({
 			write(data: string) {
-				void stream.write(data.replace(/(^|\n)/g, `$1>p2 `));
+				stream.write(data.replace(/(^|\n)/g, `$1>p2 `));
 			},
 		}),
 		p3: new Streams.ObjectReadWriteStream({
 			write(data: string) {
-				void stream.write(data.replace(/(^|\n)/g, `$1>p3 `));
+				stream.write(data.replace(/(^|\n)/g, `$1>p3 `));
 			},
 		}),
 		p4: new Streams.ObjectReadWriteStream({
 			write(data: string) {
-				void stream.write(data.replace(/(^|\n)/g, `$1>p4 `));
+				stream.write(data.replace(/(^|\n)/g, `$1>p4 `));
 			},
 		}),
 	};
@@ -190,11 +178,11 @@ export function getPlayerStreams(stream: BattleStream) {
 			}
 		}
 		for (const s of Object.values(streams)) {
-			s.pushEnd();
+			s.push(null);
 		}
 	})().catch(err => {
 		for (const s of Object.values(streams)) {
-			s.pushError(err, true);
+			s.pushError(err);
 		}
 	});
 	return streams;
@@ -205,7 +193,7 @@ export abstract class BattlePlayer {
 	readonly log: string[];
 	readonly debug: boolean;
 
-	constructor(playerStream: Streams.ObjectReadWriteStream<string>, debug = false) {
+	constructor(playerStream: Streams.ObjectReadWriteStream<string>, debug: boolean = false) {
 		this.stream = playerStream;
 		this.log = [];
 		this.debug = debug;
@@ -241,7 +229,7 @@ export abstract class BattlePlayer {
 	}
 
 	choose(choice: string) {
-		void this.stream.write(choice);
+		this.stream.write(choice);
 	}
 }
 
@@ -262,19 +250,19 @@ export class BattleTextStream extends Streams.ReadWriteStream {
 			if (!message.endsWith('\n')) message += '\n';
 			this.push(message + '\n');
 		}
-		this.pushEnd();
+		this.push(null);
 	}
 
 	_write(message: string | Buffer) {
 		this.currentMessage += '' + message;
 		const index = this.currentMessage.lastIndexOf('\n');
 		if (index >= 0) {
-			void this.battleStream.write(this.currentMessage.slice(0, index));
+			this.battleStream.write(this.currentMessage.slice(0, index));
 			this.currentMessage = this.currentMessage.slice(index + 1);
 		}
 	}
 
-	_writeEnd() {
-		return this.battleStream.writeEnd();
+	_end() {
+		return this.battleStream.end();
 	}
 }

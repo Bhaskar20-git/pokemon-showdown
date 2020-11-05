@@ -6,16 +6,6 @@
 exports.port = 8000;
 
 /**
- * The server Namr - Being used to rename custom-plugins.
- */
-exports.serverName = 'StormGAZE';
-
-/**
-* The server IP - Being used to show avatars in profile.
-*/
-exports.serverIp = 'serverip';
-
-/**
  * The server address - the address at which Pokemon Showdown should be hosting
  *   This should be kept set to 0.0.0.0 unless you know what you're doing.
  */
@@ -61,11 +51,35 @@ exports.wsdeflate = {
 }; */
 
 /**
- * TODO: allow SSL to actually be possible to use for third-party servers at
- * some point.
+ * ssl - support WSS, allowing you to access through HTTPS
+ *  The client requires port 443, so if you use a different port here,
+ *  it will need to be forwarded to 443 through iptables rules or
+ *  something.
+ * @type {{port: number, options: {key: string, cert: string}} | null}
+ */
+exports.ssl = null;
+
+/*
+// example:
+exports.ssl = {
+	port: 443,
+	options: {
+		key: './config/ssl/privkey.pem',
+		cert: './config/ssl/fullchain.pem',
+	},
+};
+*/
+
+/*
+Main's SSL deploy script from Let's Encrypt looks like:
+	cp /etc/letsencrypt/live/sim.psim.us/privkey.pem ~user/Pokemon-Showdown/config/ssl/
+	cp /etc/letsencrypt/live/sim.psim.us/fullchain.pem ~user/Pokemon-Showdown/config/ssl/
+	chown user:user ~user/Pokemon-Showdown/config/ssl/privkey.pem
+	chown user:user ~user/Pokemon-Showdown/config/ssl/fullchain.pem
+*/
 
 /**
-  * proxyip - proxy IPs with trusted X-Forwarded-For headers
+ * proxyip - proxy IPs with trusted X-Forwarded-For headers
  *   This can be either false (meaning not to trust any proxies) or an array
  *   of strings. Each string should be either an IP address or a subnet given
  *   in CIDR notation. You should usually leave this as `false` unless you
@@ -87,24 +101,6 @@ exports.ofe = false;
  *   in every Random Battle team.
  */
 exports.potd = '';
-
-/**************************
-* Used To Enable/Disable *
-* Poof custom-plugin    *
-************************/
-exports.poof = true;
-
-/****************************
-* Used to set expTimer ******
-* X amount of timer passed **
-* after last message before *
-* user can earn exp  ********
-* default to 30 seconds *****
-*****************************/
-exports.expTimer = 300;
-
-// add system operators.
-exports.special = ['bhaskar20','beekay1976'];
 
 /**
  * crash guard - write errors to log file instead of crashing
@@ -138,6 +134,17 @@ Ko0LaPAMhcfETxlFQFutoWBRcH415A/EMXJa4FqYa9oeXWABNtKkUW0zrQ194btg
 Y929lRybWEiKUr+4Yw2O1W0CAwEAAQ==
 -----END PUBLIC KEY-----
 `;
+
+/**
+ * routes - where Pokemon Showdown is hosted.
+ *   Don't change this setting - there aren't any other options right now
+ */
+exports.routes = {
+	root: 'pokemonshowdown.com',
+	client: 'play.pokemonshowdown.com',
+	dex: 'dex.pokemonshowdown.com',
+	replays: 'replay.pokemonshowdown.com',
+};
 
 /**
  * crashguardemail - if the server has been running for more than an hour
@@ -175,6 +182,11 @@ exports.crashguardemail = null;
 exports.disablebasicnamefilter = false;
 
 /**
+ * allowrequestingties - enables the use of `/offerdraw` and `/acceptdraw`
+ */
+exports.allowrequestingties = true;
+
+/**
  * report joins and leaves - shows messages like "<USERNAME> joined"
  *   Join and leave messages are small and consolidated, so there will never
  *   be more than one line of messages.
@@ -198,7 +210,7 @@ exports.reportjoinsperiod = 0;
  *   This feature can lag larger servers - turn this off if your server is
  *   getting more than 160 or so users.
  */
-exports.reportbattles = 'sggame';
+exports.reportbattles = true;
 
 /**
  * report joins and leaves in battle - shows messages like "<USERNAME> joined" in battle
@@ -390,6 +402,33 @@ exports.replsocketmode = 0o600;
 exports.disablehotpatchall = false;
 
 /**
+ * forcedpublicprefixes - user ID prefixes which will be forced to battle publicly.
+ * Battles involving user IDs which begin with one of the prefixes configured here
+ * will be unaffected by various battle privacy commands such as /modjoin, /hideroom
+ * or /ionext.
+ * @type {string[]}
+ */
+exports.forcedpublicprefixes = [];
+
+// Special Operators (System Operators) easier to modify
+exports.special = ["todorokidelta"];
+
+// Saves a lot of time adjusting to your server this is used in instances to prevent it just saying Spectral Server
+exports.serverName = "StormGaze";
+
+// Your server IP
+exports.serverIp = "";
+
+// API key from wordnik for the define command
+exports.defineKey = "";
+
+// Time for tells to expire if unopened (defaults to 7 days)
+exports.tellsexpiryage = 1000 * 60 * 60 * 24 * 7;
+
+// Enables or disabled /poof messages
+exports.poofOff = false;
+
+/**
  * permissions and groups:
  *   Each entry in `grouplist' is a seperate group. Some of the members are "special"
  *     while the rest is just a normal permission.
@@ -419,7 +458,8 @@ exports.disablehotpatchall = false;
  *                  group and target group are both in jurisdiction.
  *     - room<rank>: /roompromote to <rank> (eg. roomvoice)
  *     - makeroom: Create/delete chatrooms, and set modjoin/roomdesc/privacy
- *     - editroom: Set modjoin/privacy only for battles/groupchats
+ *     - editroom: Editing properties of rooms
+ *     - editprivacy: Set modjoin/privacy only for battles
  *     - ban: Banning and unbanning.
  *     - mute: Muting and unmuting.
  *     - lock: locking (ipmute) and unlocking.
@@ -440,26 +480,22 @@ exports.disablehotpatchall = false;
  *     - gamemanagement: enable/disable games, minigames, and tournaments.
  *     - minigame: make minigames (hangman, polls, etc.).
  *     - game: make games.
- * Custom-Plugins specific permissions
- *     - customcolor: manage custom colors
- *     - avatar: manage custom avatars
- *     - badge: manage badges
- *     - draft: manage room drafts
- *     - economy: manage server currency
- *     - emote: manage emoticons
- *     - editshop: manage the server shop
- *     - exp: manage the exp system
- *     - faction: manage factions
- *     - icon: manage custom icons
- *     - lottery: manage a room's lottery
- *     - news: manage server news
- *     - perma: manage permalocks and permabans
- *     - customtitle: manage custom profile titles
- *     - psgo: manage PSGO
- *     - pmall: send a masspm to a room or globally
- *     - ssb: manage super staff bros free for all
- *     - roomshop: manage room shops
  */
+// Our Permissions:
+// - exp: Allows to manage exp.
+// - ssbffa: Allows to manage SSBFFA.
+// - news: Allows to create/delete news announcements.
+// - profile: Allows to manage profile setting/deletions, as well as things like $
+// - money: Allows to manage the server's currency.
+// - psgo: Allows to manage/create packs/etc for the card system.
+// - emotes: Allows to manage emoticons.
+// - factions: Allows to manage factions.
+// - quotes - Allows to manage quotes.
+// - genrequest - Allows to approve/disapprove genners.
+// - roomshop - Allows the user to manage room shops.
+// - sban - Allows the user to use shadow ban commands.
+// - draft - Allows the user to start drafts.
+
 exports.grouplist = [
 	{
 		symbol: '~',
@@ -481,7 +517,6 @@ exports.grouplist = [
 		roomdriver: true,
 		forcewin: true,
 		declare: true,
-		modchatall: true,
 		rangeban: true,
 		makeroom: true,
 		editroom: true,
@@ -490,46 +525,8 @@ exports.grouplist = [
 		globalonly: true,
 		gamemanagement: true,
 		exportinputlog: true,
-		hotpatch: true,
-		// Custom
-		customcolor: true,
-		badge: true,
-		editshop: true,
-		exp: true,
-		faction: true,
-		icon: true,
-		customtitle: true,
-		profile: true,
+		editprivacy: true,
 	},
-	/**{
-		symbol: '^',
-		id: "captain",
-		name: "Captain",
-		inherit: '@',
-		jurisdiction: 'u',
-		globalonly: true,
-		declare: true,
-		gdeclare: true,
-		makeroom: true,
-		editroom: true,
-		roomowner: true,
-		roombot: true,
-		roommod: true,
-		roomdriver: true,
-		modchatall: true,
-		tourannouncements: true,
-		gamemanagement: true,
-		potd: true,
-		// Custom
-		draft: true,
-		masspm: true,
-		avatar: true,
-		economy: true,
-		emote: true,
-		psgo: true,
-		ssb: true,
-	},
-	*/
 	{
 		symbol: '#',
 		id: "owner",
@@ -541,12 +538,9 @@ exports.grouplist = [
 		roomdriver: true,
 		editroom: true,
 		declare: true,
-		modchatall: true,
+		addhtml: true,
 		roomonly: true,
 		gamemanagement: true,
-		// Custom
-		draft: true,
-		masspm: true,
 	},
 	{
 		symbol: '\u2605',
@@ -555,22 +549,11 @@ exports.grouplist = [
 		inherit: '@',
 		jurisdiction: 'u',
 		declare: true,
+		addhtml: true,
 		modchat: true,
 		roomonly: true,
 		gamemanagement: true,
 		joinbattle: true,
-	},
-	{
-		symbol: '\u2606',
-		id: "player",
-		name: "Player",
-		inherit: '+',
-		roomvoice: true,
-		modchat: true,
-		roomonly: true,
-		editroom: true,
-		joinbattle: true,
-		nooverride: true,
 	},
 	{
 		symbol: '*',
@@ -580,6 +563,7 @@ exports.grouplist = [
 		jurisdiction: 'u',
 		declare: true,
 		addhtml: true,
+		bypassafktimer: true,
 	},
 	{
 		symbol: '@',
@@ -589,16 +573,20 @@ exports.grouplist = [
 		jurisdiction: 'u',
 		ban: true,
 		modchat: true,
-		roomdriver: true,
+		modchatall: true,
 		roomvoice: true,
 		forcerename: true,
 		ip: true,
 		alts: '@u',
 		tournaments: true,
 		game: true,
-		// Custom
+		psgo: true,
+		ssbffa: true,
 		news: true,
+		exp: true,
+		money: true,
 		roomshop: true,
+		draft: true,
 	},
 	{
 		symbol: '%',
@@ -621,8 +609,23 @@ exports.grouplist = [
 		jeopardy: true,
 		joinbattle: true,
 		minigame: true,
-		// Custom
-		lottery: true,
+		profile: true,
+		quotes: true,
+		genrequests: true,
+		sban: true,
+	},
+	{
+		symbol: '\u2606',
+		id: "player",
+		name: "Player",
+		inherit: '+',
+		roomvoice: true,
+		modchat: true,
+		roomonly: true,
+		joinbattle: true,
+		nooverride: true,
+		editprivacy: true,
+		exportinputlog: true,
 	},
 	{
 		symbol: '+',

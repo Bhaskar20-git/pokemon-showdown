@@ -5,11 +5,11 @@ const common = require('./../../common');
 
 let battle;
 
-const moves = ['Ice Ball', 'Rollout'];
+let moves = ['Ice Ball', 'Rollout'];
 
 for (const move of moves) {
 	describe(move, function () {
-		const id = move.toLowerCase().replace(/\W+/g, '');
+		let id = move.toLowerCase().replace(/\W+/g, '');
 
 		afterEach(function () {
 			battle.destroy();
@@ -23,9 +23,9 @@ for (const move of moves) {
 
 			let ebp = 30;
 			let count = 0;
-			battle.onEvent('BasePower', battle.format, function (basePower) {
+			battle.onEvent('BasePower', battle.getFormat(), function (basePower) {
 				count++;
-				assert.equal(basePower, ebp);
+				assert.strictEqual(basePower, ebp);
 				if (count % 5 === 0) {
 					ebp = 30;
 				} else {
@@ -36,7 +36,7 @@ for (const move of moves) {
 			for (let i = 0; i < 8; i++) {
 				battle.makeChoices('move ' + id, 'move recover');
 			}
-			assert.equal(count, 8);
+			assert.strictEqual(count, 8);
 		});
 
 		it('should reset its Base Power if the move misses', function () {
@@ -47,7 +47,7 @@ for (const move of moves) {
 
 			let ebp = 30;
 			let count = 0;
-			battle.onEvent('Accuracy', battle.format, function (accuracy, target, pokemon, move) {
+			battle.onEvent('Accuracy', battle.getFormat(), function (accuracy, target, pokemon, move) {
 				if (move.id === 'recover') return;
 
 				count++;
@@ -58,15 +58,15 @@ for (const move of moves) {
 					return true;
 				}
 			});
-			battle.onEvent('BasePower', battle.format, function (basePower) {
-				assert.equal(basePower, ebp);
+			battle.onEvent('BasePower', battle.getFormat(), function (basePower) {
+				assert.strictEqual(basePower, ebp);
 				ebp *= 2;
 			});
 
 			for (let i = 0; i < 5; i++) {
 				battle.makeChoices('move ' + id, 'move recover');
 			}
-			assert.equal(count, 5);
+			assert.strictEqual(count, 5);
 		});
 
 		it('should reset its Base Power if the Pokemon is immobilized', function () {
@@ -77,7 +77,7 @@ for (const move of moves) {
 
 			let ebp = 30;
 			let count = 0;
-			battle.onEvent('BeforeMove', battle.format, function (attacker, defender, move) {
+			battle.onEvent('BeforeMove', battle.getFormat(), function (attacker, defender, move) {
 				if (move.id === 'recover') return;
 
 				count++;
@@ -86,15 +86,15 @@ for (const move of moves) {
 					return false; // Imitate immobilization from Paralysis, etc.
 				}
 			});
-			battle.onEvent('BasePower', battle.format, function (basePower) {
-				assert.equal(basePower, ebp);
+			battle.onEvent('BasePower', battle.getFormat(), function (basePower) {
+				assert.strictEqual(basePower, ebp);
 				ebp *= 2;
 			});
 
 			for (let i = 0; i < 5; i++) {
 				battle.makeChoices('move ' + id, 'move recover');
 			}
-			assert.equal(count, 5);
+			assert.strictEqual(count, 5);
 		});
 
 		it('should have double Base Power if the Pokemon used Defense Curl earlier', function () {
@@ -104,14 +104,14 @@ for (const move of moves) {
 			]);
 
 			let runCount = 0;
-			battle.onEvent('BasePower', battle.format, function (basePower) {
-				assert.equal(basePower, 60);
+			battle.onEvent('BasePower', battle.getFormat(), function (basePower) {
+				assert.strictEqual(basePower, 60);
 				runCount++;
 			});
 
 			battle.makeChoices('move defensecurl', 'move recover');
 			battle.makeChoices('move ' + id, 'move recover');
-			assert.equal(runCount, 1);
+			assert.strictEqual(runCount, 1);
 		});
 
 		it('should not be affected by Parental Bond', function () {
@@ -121,13 +121,13 @@ for (const move of moves) {
 			]);
 
 			let hitCount = 0;
-			battle.onEvent('BasePower', battle.format, function (basePower) {
-				assert.equal(basePower, 30);
+			battle.onEvent('BasePower', battle.getFormat(), function (basePower) {
+				assert.strictEqual(basePower, 30);
 				hitCount++;
 			});
 
 			battle.makeChoices('move ' + id, 'move recover');
-			assert.equal(hitCount, 1);
+			assert.strictEqual(hitCount, 1);
 		});
 	});
 }

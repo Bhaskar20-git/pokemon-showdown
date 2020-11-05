@@ -1,5 +1,3 @@
-import {Utils} from '../../lib/utils';
-
 interface ElimTree {
 	root: ElimNode;
 	currentLayerLeafNodes: ElimNode[];
@@ -80,7 +78,6 @@ class ElimNode {
 		let node;
 		// tslint:disable-next-line: no-conditional-assignment
 		while ((node = queue.shift())) {
-			// eslint-disable-next-line callback-return
 			callback(node);
 			if (node.children) queue.push(...node.children);
 		}
@@ -99,13 +96,11 @@ class ElimNode {
 		}
 		return undefined;
 	}
-	// eslint-disable-next-line no-restricted-globals
 	[Symbol.iterator]() {
 		const results: ElimNode[] = [this];
 		for (const result of results) {
 			if (result.children) results.push(...result.children);
 		}
-		// eslint-disable-next-line no-restricted-globals
 		return results[Symbol.iterator]();
 	}
 	toJSON() {
@@ -141,8 +136,8 @@ const nameMap = [
 ];
 
 export class Elimination {
-	readonly name: string;
-	readonly isDrawingSupported: boolean;
+	name: string;
+	isDrawingSupported: boolean;
 	isBracketFrozen: boolean;
 	players: TournamentPlayer[];
 	maxSubtrees: number;
@@ -194,7 +189,7 @@ export class Elimination {
 		// build the winner's bracket
 		let tree: ElimTree = null!;
 
-		for (const user of Utils.shuffle(players)) {
+		for (const user of Dex.shuffle(players)) {
 			if (!tree) {
 				tree = {
 					root: new ElimNode({user}),

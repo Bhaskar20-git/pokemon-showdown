@@ -1,6 +1,6 @@
 'use strict';
 
-const assert = require('assert').strict;
+const assert = require('assert');
 const Dashycode = require('./../../.lib-dist/dashycode');
 
 describe('Dashycode', function () {
@@ -16,18 +16,18 @@ describe('Dashycode', function () {
 	const encode = (codepoint) => {
 		const character = String.fromCodePoint(codepoint);
 		const dashycode = Dashycode.encode(character);
-		assert.equal(encoded.has(dashycode), false);
+		assert.strictEqual(encoded.has(dashycode), false);
 		encoded.set(dashycode, character);
 	};
 
 	const decode = (dashycode) => {
 		const character = Dashycode.decode(dashycode);
-		assert.equal(encoded.get(dashycode), character);
+		assert.strictEqual(encoded.get(dashycode), character);
 	};
 
 	const transcode = (plaintext) => function () {
 		const ciphertext = Dashycode.encode(plaintext);
-		assert.equal(Dashycode.decode(ciphertext), plaintext);
+		assert.strictEqual(Dashycode.decode(ciphertext), plaintext);
 	};
 
 	const transcodeWithSets = (set1, set2) => function () {
@@ -51,7 +51,7 @@ describe('Dashycode', function () {
 			plaintext += (bitmask & 0x8000) ? set1[15] : set2[15];
 
 			const ciphertext = Dashycode.encode(plaintext);
-			assert.equal(Dashycode.decode(ciphertext), plaintext);
+			assert.strictEqual(Dashycode.decode(ciphertext), plaintext);
 		}
 	};
 

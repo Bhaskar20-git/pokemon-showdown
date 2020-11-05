@@ -83,45 +83,17 @@ Main's SSL deploy script from Let's Encrypt looks like:
  *   This can be either false (meaning not to trust any proxies) or an array
  *   of strings. Each string should be either an IP address or a subnet given
  *   in CIDR notation. You should usually leave this as `false` unless you
- *   know what you are doing
- * @type {false | string[]}.
+ *   know what you are doing.
  */
 exports.proxyip = false;
 
 /**
- * Various debug options
- *
- * ofe[something]
- * ============================================================================
- *
- * Write heapdumps if that processs run out of memory.
- *
- * If you wish to enable this, you will need to install node-oom-heapdump,
- * as it is sometimes not installed by default:
- *
+ * ofe - write heapdumps if sockets.js workers run out of memory.
+ *   If you wish to enable this, you will need to install node-oom-heapdump,
+ *   as it is sometimes not installed by default:
  *     $ npm install node-oom-heapdump
- *
- * You might also want to signal processes to put them in debug mode, for
- * access to on-demand heapdumps.
- *
- *     kill -s SIGUSR1 [pid]
- *
- * debug[something]processes
- * ============================================================================
- *
- * Attach a `debug` property to `ProcessWrapper`, allowing you to see the last
- * message it received before it hit an infinite loop.
- *
- * For example:
- *
- *     >> ProcessManager.processManagers[4].processes[0].debug
- *     << "{"tar":"spe=60,all,!lc,!nfe","cmd":"dexsearch","canAll":true,"message":"/ds spe=60,all,!lc,!nfe"}"
  */
-exports.ofemain = false;
-exports.ofesockets = false;
-exports.debugsimprocesses = true;
-exports.debugvalidatorprocesses = true;
-exports.debugdexsearchprocesses = true;
+exports.ofe = false;
 
 /**
  * Pokemon of the Day - put a pokemon's name here to make it Pokemon of the Day
@@ -283,22 +255,18 @@ exports.restrictLinks = false;
 
 /**
   * chat modchat - default minimum group for speaking in chatrooms; changeable with /modchat
-  * @type {false | string}
  */
 exports.chatmodchat = false;
 /**
  * battle modchat - default minimum group for speaking in battles; changeable with /modchat
- * @type {false | string}
  */
 exports.battlemodchat = false;
 /**
  * pm modchat - minimum group for PMing other users, challenging other users
- * @type {false | string}
  */
 exports.pmmodchat = false;
 /**
  * ladder modchat - minimum group for laddering
- * @type {false | GroupSymbol}
  */
 exports.laddermodchat = false;
 
@@ -442,21 +410,27 @@ exports.disablehotpatchall = false;
  */
 exports.forcedpublicprefixes = [];
 
-/**
- * startuphook - function to call when the server is fully initialized and ready
- * to serve requests.
- */
-exports.startuphook = function () {};
+// Special Operators (System Operators) easier to modify
+exports.special = ["volco", "roughskull", "ragininfernape", "flufi"];
 
+// Saves a lot of time adjusting to your server this is used in instances to prevent it just saying Spectral Server
+exports.serverName = "Spectral";
 
-/**
- * chatlogreader - the search method used for searching chatlogs.
- * @type {'ripgrep' | 'fs'}
- */
-exports.chatlogreader = 'fs';
+// Your server IP
+exports.serverIp = "";
+
+// API key from wordnik for the define command
+exports.defineKey = "";
+
+// Time for tells to expire if unopened (defaults to 7 days)
+exports.tellsexpiryage = 1000 * 60 * 60 * 24 * 7;
+
+// Enables or disabled /poof messages
+exports.poofOff = false;
+
 /**
  * permissions and groups:
- *   Each entry in `grouplist` is a seperate group. Some of the members are "special"
+ *   Each entry in `grouplist' is a seperate group. Some of the members are "special"
  *     while the rest is just a normal permission.
  *   The order of the groups determines their ranking.
  *   The special members are as follows:
@@ -507,6 +481,21 @@ exports.chatlogreader = 'fs';
  *     - minigame: make minigames (hangman, polls, etc.).
  *     - game: make games.
  */
+// Our Permissions:
+// - exp: Allows to manage exp.
+// - ssbffa: Allows to manage SSBFFA.
+// - news: Allows to create/delete news announcements.
+// - profile: Allows to manage profile setting/deletions, as well as things like $
+// - money: Allows to manage the server's currency.
+// - psgo: Allows to manage/create packs/etc for the card system.
+// - emotes: Allows to manage emoticons.
+// - factions: Allows to manage factions.
+// - quotes - Allows to manage quotes.
+// - genrequest - Allows to approve/disapprove genners.
+// - roomshop - Allows the user to manage room shops.
+// - sban - Allows the user to use shadow ban commands.
+// - draft - Allows the user to start drafts.
+
 exports.grouplist = [
 	{
 		symbol: '~',
@@ -583,6 +572,7 @@ exports.grouplist = [
 		inherit: '%',
 		jurisdiction: 'u',
 		ban: true,
+		modchat: true,
 		modchatall: true,
 		roomvoice: true,
 		forcerename: true,
@@ -590,6 +580,13 @@ exports.grouplist = [
 		alts: '@u',
 		tournaments: true,
 		game: true,
+		psgo: true,
+		ssbffa: true,
+		news: true,
+		exp: true,
+		money: true,
+		roomshop: true,
+		draft: true,
 	},
 	{
 		symbol: '%',
@@ -612,7 +609,10 @@ exports.grouplist = [
 		jeopardy: true,
 		joinbattle: true,
 		minigame: true,
-		modchat: true,
+		profile: true,
+		quotes: true,
+		genrequests: true,
+		sban: true,
 	},
 	{
 		symbol: '\u2606',
@@ -634,21 +634,10 @@ exports.grouplist = [
 		inherit: ' ',
 		alts: 's',
 		broadcast: true,
-		showmedia: true,
-	},
-	{
-		symbol: 'whitelist',
-		id: "whitelist",
-		name: "Whitelist",
-		inherit: ' ',
-		roomonly: true,
-		alts: 's',
-		broadcast: true,
-		importinputlog: true,
-		showmedia: true,
 	},
 	{
 		symbol: ' ',
+		ip: 's',
 	},
 	{
 		name: 'Locked',

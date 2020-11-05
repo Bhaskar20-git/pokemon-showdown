@@ -22,7 +22,7 @@ Client implementations you might want to look at for reference include:
 - Morfent's chat bot (Perl 6) -
     https://github.com/Kaiepi/p6-PSBot
 - the official client (HTML5 + JavaScript) -
-    https://github.com/smogon/pokemon-showdown-client
+    https://github.com/Zarel/Pokemon-Showdown-Client
 
 The official client logs protocol messages in the JavaScript console,
 so opening that (F12 in most browsers) can help tell you what's going
@@ -150,7 +150,7 @@ represented by a space), and the rest of the string being their username.
 
 > Changes the HTML display of the `|uhtml|` message named (NAME).
 
-`|join|USER`, `|j|USER`, or `|J|USER`
+`|join|USER`, |j|USER`, or `|J|USER`
 
 > `USER` joined the room. Optionally, `USER` may be appended with `@!` to
 > indicate that the user is away or busy.
@@ -169,17 +169,6 @@ represented by a space), and the rest of the string being their username.
 
 > `USER` said `MESSAGE`. Note that `MESSAGE` can contain `|` characters,
 > so you can't just split by `|` and take the fourth string.
-
-`|notify|TITLE|MESSAGE`
-
-> Send a notification with `TITLE` and `MESSAGE` (usually, `TITLE` will be
-> bold, and `MESSAGE` is optional).
-
-`|notify|TITLE|MESSAGE|HIGHLIGHTTOKEN`
-
-> Send a notification as above, but only if the user would be notified
-> by a chat message containing `HIGHLIGHTTOKEN` (i.e. if `HIGHLIGHTTOKEN`
-> contains words added to `/highlight`, or their username by default.)
 
 `|:|TIMESTAMP`
 
@@ -405,12 +394,12 @@ Battles
 Battle rooms will have a mix of room messages and battle messages. [Battle
 messages are documented in `SIM-PROTOCOL.md`][sim-protocol].
 
-  [sim-protocol]: https://github.com/smogon/pokemon-showdown/blob/master/sim/SIM-PROTOCOL.md
+  [sim-protocol]: https://github.com/Zarel/Pokemon-Showdown/blob/master/sim/SIM-PROTOCOL.md
 
 To make decisions in battle, players should use the `/choose` command,
 [also documented in `SIM-PROTOCOL.md`][sending-decisions].
 
-  [sending-decisions]: https://github.com/smogon/pokemon-showdown/blob/master/sim/SIM-PROTOCOL.md#sending-decisions
+  [sending-decisions]: https://github.com/Zarel/Pokemon-Showdown/blob/master/sim/SIM-PROTOCOL.md#sending-decisions
 
 ### Starting battles through challenges
 
@@ -520,8 +509,6 @@ NICKNAME|SPECIES|ITEM|ABILITY|MOVES|NATURE|EVS|GENDER|IVS|SHINY|LEVEL|HAPPINESS,
 
 - `MOVES` is a comma-separated list of move IDs.
 
-- `NATURE` left blank means Serious, except in Gen 1-2, where it means no Nature.
-
 - `EVS` and `IVS` are comma-separated in standard order:
   HP, Atk, Def, SpA, SpD, Spe. EVs left blank are 0, IVs left blank are 31.
   If all EVs or IVs are blank, the commas can all be left off.
@@ -542,9 +529,8 @@ NICKNAME|SPECIES|ITEM|ABILITY|MOVES|NATURE|EVS|GENDER|IVS|SHINY|LEVEL|HAPPINESS,
 
 - `POKEBALL` is left blank if it's a regular Poké Ball.
 
-- `HIDDENPOWERTYPE` is left blank if the Pokémon is not Hyper Trained, if
-  Hyper Training doesn't affect IVs, or if it's represented by a move in
-  the moves list.
+- `HIDDENPOWERTYPE` is left blank if the Pokémon is not Hyper Trained, or if
+  Hyper Training doesn't affect IVs.
 
 - If `POKEBALL` and `HIDDENPOWERTYPE` are both blank, the commas will be left
   off.

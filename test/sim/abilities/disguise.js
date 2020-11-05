@@ -9,7 +9,7 @@ describe('Disguise', function () {
 	afterEach(() => battle.destroy());
 
 	it('should block damage from one move', function () {
-		battle = common.gen(7).createBattle();
+		battle = common.createBattle();
 		battle.setPlayer('p1', {team: [{species: 'Mimikyu', ability: 'disguise', moves: ['splash']}]});
 		battle.setPlayer('p2', {team: [{species: 'Mewtwo', ability: 'pressure', moves: ['psystrike']}]});
 		assert.false.hurts(battle.p1.active[0], () => battle.makeChoices());
@@ -17,14 +17,14 @@ describe('Disguise', function () {
 	});
 
 	it('should only block damage from the first hit of a move', function () {
-		battle = common.gen(7).createBattle();
+		battle = common.createBattle();
 		battle.setPlayer('p1', {team: [{species: 'Mimikyu', ability: 'disguise', moves: ['splash']}]});
 		battle.setPlayer('p2', {team: [{species: 'Beedrill', ability: 'swarm', moves: ['twineedle']}]});
 		assert.hurts(battle.p1.active[0], () => battle.makeChoices());
 	});
 
 	it('should block a hit from confusion', function () {
-		battle = common.gen(7).createBattle();
+		battle = common.createBattle();
 		battle.setPlayer('p1', {team: [{species: 'Mimikyu', ability: 'disguise', moves: ['splash']}]});
 		battle.setPlayer('p2', {team: [{species: 'Sableye', ability: 'prankster', moves: ['confuseray']}]});
 		assert.false.hurts(battle.p1.active[0], () => battle.makeChoices());
@@ -53,17 +53,17 @@ describe('Disguise', function () {
 		battle = common.createBattle();
 		battle.setPlayer('p1', {team: [{species: 'Mimikyu', ability: 'disguise', moves: ['splash']}]});
 		battle.setPlayer('p2', {team: [{species: 'Ariados', ability: 'swarm', moves: ['toxicthread']}]});
-		const pokemon = battle.p1.active[0];
+		let pokemon = battle.p1.active[0];
 		assert.sets(() => pokemon.status, 'psn', () => battle.makeChoices());
 		assert.statStage(pokemon, 'spe', -1);
 		assert.false.fullHP(pokemon);
 	});
 
 	it('should not block secondary effects from damaging moves', function () {
-		battle = common.gen(7).createBattle();
+		battle = common.createBattle();
 		battle.setPlayer('p1', {team: [{species: 'Mimikyu', ability: 'disguise', moves: ['splash']}]});
 		battle.setPlayer('p2', {team: [{species: 'Pikachu', ability: 'lightningrod', moves: ['nuzzle']}]});
-		const pokemon = battle.p1.active[0];
+		let pokemon = battle.p1.active[0];
 		assert.sets(() => pokemon.status, 'par', () => battle.makeChoices());
 		assert.fullHP(pokemon);
 	});
@@ -75,13 +75,18 @@ describe('Disguise', function () {
 		assert.hurtsBy(battle.p2.active[0], 1, () => battle.makeChoices());
 	});
 
-	it('should not trigger critical hits while active', function () {
-		battle = common.createBattle([[
-			{species: 'Mimikyu', ability: 'disguise', moves: ['sleeptalk']},
-		], [
-			{species: 'Cryogonal', ability: 'noguard', moves: ['frostbreath']},
-		]]);
+	it.skip('should not trigger critical hits while active', function () {
+		battle = common.createBattle();
+		battle.setPlayer('p1', {team: [{species: 'Mimikyu', ability: 'disguise', moves: ['counter']}]});
+		battle.setPlayer('p2', {team: [{species: 'Cryogonal', ability: 'noguard', moves: ['frostbreath']}]});
+		let successfulEvent = false;
+		battle.onEvent('Damage', battle.getFormat(), function (damage, attacker, defender, move) {
+			if (move.id === 'frostbreath') {
+				successfulEvent = true;
+				assert.ok(!defender.getMoveHitData(move).crit);
+			}
+		});
 		battle.makeChoices();
-		assert(battle.log.every(line => !line.startsWith('|-crit')));
+		assert.ok(successfulEvent);
 	});
 });

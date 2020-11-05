@@ -21,8 +21,7 @@ before('initialization', function () {
 		if (err.code !== 'MODULE_NOT_FOUND' && err.code !== 'ENOENT') throw err; // Should never happen
 
 		console.log("config.js doesn't exist - creating one with default settings...");
-		fs.writeFileSync(
-			path.resolve(__dirname, '../config/config.js'),
+		fs.writeFileSync(path.resolve(__dirname, '../config/config.js'),
 			fs.readFileSync(path.resolve(__dirname, '../config/config-example.js'))
 		);
 	} finally {
@@ -31,12 +30,6 @@ before('initialization', function () {
 	require('./../.lib-dist/process-manager').disabled = true;
 
 	Object.assign(config, require('../config/config-example'));
-	// stop chatrooms from loading through modifying the require cache
-	try {
-		const chatrooms = require('../config/chatrooms.json');
-		chatrooms.splice(0, chatrooms.length);
-	} catch (e) {}
-
 	// Actually crash if we crash
 	config.crashguard = false;
 	// Don't allow config to be overridden while test is running
@@ -50,8 +43,7 @@ before('initialization', function () {
 	require('../.lib-dist/repl').Repl.start = noop;
 
 	// Start the server.
-	// NOTE: This used "server" before when we needed ".server-dist"
-	require('../.server-dist');
+	require('../server');
 
 	LoginServer.disabled = true;
 

@@ -2,7 +2,7 @@
  * REPL
  *
  * Documented in logs/repl/README.md
- * https://github.com/smogon/pokemon-showdown/blob/master/logs/repl/README.md
+ * https://github.com/Zarel/Pokemon-Showdown/blob/master/logs/repl/README.md
  *
  * @author kota
  * @license MIT
@@ -14,13 +14,13 @@ import * as path from 'path';
 import * as repl from 'repl';
 import {crashlogger} from './crashlogger';
 
-export const Repl = new class ReplSingleton {
+export const Repl = new class {
 	/**
 	 * Contains the pathnames of all active REPL sockets.
 	 */
 	socketPathnames: Set<string> = new Set();
 
-	listenersSetup = false;
+	listenersSetup: boolean = false;
 
 	setupListeners() {
 		if (Repl.listenersSetup) return;
@@ -79,6 +79,7 @@ export const Repl = new class ReplSingleton {
 			repl.start({
 				input: socket,
 				output: socket,
+				// tslint:disable-next-line:ban-types
 				eval(cmd: string, context: any, unusedFilename: string, callback: Function): any {
 					try {
 						return callback(null, evalFunction(cmd));
@@ -91,32 +92,29 @@ export const Repl = new class ReplSingleton {
 		});
 
 		const pathname = path.resolve(__dirname, '..', Config.replsocketprefix || 'logs/repl', filename);
-		try {
-			server.listen(pathname, () => {
-				fs.chmodSync(pathname, Config.replsocketmode || 0o600);
-				Repl.socketPathnames.add(pathname);
-			});
+		server.listen(pathname, () => {
+			fs.chmodSync(pathname, Config.replsocketmode || 0o600);
+			Repl.socketPathnames.add(pathname);
+		});
 
-			server.once('error', (err: NodeJS.ErrnoException) => {
-				if (err.code === "EADDRINUSE") {
-					fs.unlink(pathname, _err => {
-						if (_err && _err.code !== "ENOENT") {
-							crashlogger(_err, `REPL: ${filename}`);
-						}
-						server.close();
-					});
-				} else {
-					crashlogger(err, `REPL: ${filename}`);
+		server.once('error', (err: NodeJS.ErrnoException) => {
+			if (err.code === "EADDRINUSE") {
+				// tslint:disable-next-line:variable-name
+				fs.unlink(pathname, _err => {
+					if (_err && _err.code !== "ENOENT") {
+						crashlogger(_err, `REPL: ${filename}`);
+					}
 					server.close();
-				}
-			});
+				});
+			} else {
+				crashlogger(err, `REPL: ${filename}`);
+				server.close();
+			}
+		});
 
-			server.once('close', () => {
-				Repl.socketPathnames.delete(pathname);
-				Repl.start(filename, evalFunction);
-			});
-		} catch (err) {
-			console.error(`Could not start REPL server "${filename}": ${err}`);
-		}
+		server.once('close', () => {
+			Repl.socketPathnames.delete(pathname);
+			Repl.start(filename, evalFunction);
+		});
 	}
 };

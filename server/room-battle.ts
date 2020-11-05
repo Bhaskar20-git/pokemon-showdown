@@ -13,7 +13,6 @@
 
 import {execSync} from "child_process";
 import {FS} from "../lib/fs";
-import {Utils} from '../lib/utils';
 import {StreamProcessManager} from "../lib/process-manager";
 import {Repl} from "../lib/repl";
 import {BattleStream} from "../sim/battle-stream";
@@ -21,16 +20,11 @@ import * as RoomGames from "./room-game";
 
 type ChannelIndex = 0 | 1 | 2 | 3 | 4;
 type PlayerIndex = 1 | 2 | 3 | 4;
-export type ChallengeType = 'rated' | 'unrated' | 'challenge' | 'tour';
 
 interface BattleRequestTracker {
 	rqid: number;
 	request: string;
-	/**
-	 * - true = user has decided,
-	 * - false = user has yet to decide,
-	 * - 'cantUndo' = waiting on other user (U-turn, faint-switch) or uncancellable (trapping ability)
-	 */
+	// true = user has decided, false = user has yet to decide, 'cantUndo' = waiting on other user (U-turn, faint-switch) or uncancellable (trapping ability)
 	isWait: 'cantUndo' | true | false;
 	choice: string;
 }
@@ -53,8 +47,8 @@ const DISCONNECTION_BANK_TIME = 300;
 const TIMER_COOLDOWN = 20 * SECONDS;
 
 export class RoomBattlePlayer extends RoomGames.RoomGamePlayer {
-	readonly slot: SideID;
-	readonly channelIndex: ChannelIndex;
+	slot: SideID;
+	channelIndex: ChannelIndex;
 	request: BattleRequestTracker;
 	wantsTie: boolean;
 	active: boolean;
@@ -114,44 +108,43 @@ export class RoomBattlePlayer extends RoomGames.RoomGamePlayer {
 		this.connected = true;
 
 		if (user) {
-			user.games.add(this.game.roomid);
+			user.games.add(this.game.id);
 			user.updateSearch();
 			for (const connection of user.connections) {
-				if (connection.inRooms.has(game.roomid)) {
-					Sockets.channelMove(connection.worker, this.game.roomid, this.channelIndex, connection.socketid);
+				if (connection.inRooms.has(game.id)) {
+					Sockets.channelMove(connection.worker, this.game.id, this.channelIndex, connection.socketid);
 				}
 			}
 		}
 	}
 	getUser() {
-		return (this.id && Users.get(this.id)) || null;
+		return (this.userid && Users.get(this.userid)) || null;
 	}
 	unlinkUser() {
 		const user = this.getUser();
 		if (user) {
 			for (const connection of user.connections) {
-				Sockets.channelMove(connection.worker, this.game.roomid, 0, connection.socketid);
+				Sockets.channelMove(connection.worker, this.game.id, 0, connection.socketid);
 			}
-			user.games.delete(this.game.roomid);
+			user.games.delete(this.game.id);
 			user.updateSearch();
 		}
-		this.id = '';
 		this.connected = false;
 		this.active = false;
 	}
 	updateChannel(user: User | Connection) {
 		if (user instanceof Users.Connection) {
 			// "user" is actually a connection
-			Sockets.channelMove(user.worker, this.game.roomid, this.channelIndex, user.socketid);
+			Sockets.channelMove(user.worker, this.game.id, this.channelIndex, user.socketid);
 			return;
 		}
 		for (const connection of user.connections) {
-			Sockets.channelMove(connection.worker, this.game.roomid, this.channelIndex, connection.socketid);
+			Sockets.channelMove(connection.worker, this.game.id, this.channelIndex, connection.socketid);
 		}
 	}
 
 	toString() {
-		return this.id;
+		return this.userid;
 	}
 	send(data: string) {
 		const user = this.getUser();
@@ -159,14 +152,14 @@ export class RoomBattlePlayer extends RoomGames.RoomGamePlayer {
 	}
 	sendRoom(data: string) {
 		const user = this.getUser();
-		if (user) user.sendTo(this.game.roomid, data);
+		if (user) user.sendTo(this.game.id, data);
 	}
 }
 
 export class RoomBattleTimer {
-	readonly battle: RoomBattle;
-	readonly timerRequesters: Set<ID>;
+	battle: RoomBattle;
 	timer: NodeJS.Timer | null;
+	timerRequesters: Set<ID>;
 	isFirstTurn: boolean;
 	/**
 	 * Last tick, as milliseconds since UNIX epoch.
@@ -195,7 +188,7 @@ export class RoomBattleTimer {
 		const hasLongTurns = Dex.getFormat(battle.format, true).gameType !== 'singles';
 		const isChallenge = (!battle.rated && !battle.room.tour);
 		const timerEntry = Dex.getRuleTable(Dex.getFormat(battle.format, true)).timer;
-		const timerSettings = timerEntry?.[0];
+		const timerSettings = timerEntry && timerEntry[0];
 
 		// so that Object.assign doesn't overwrite anything with `undefined`
 		for (const k in timerSettings) {
@@ -223,17 +216,17 @@ export class RoomBattleTimer {
 		}
 	}
 	start(requester?: User) {
-		const userid = requester ? requester.id : 'staff' as ID;
+		const userid = requester ? requester.userid : 'staff' as ID;
 		if (this.timerRequesters.has(userid)) return false;
 		if (this.timer) {
 			this.battle.room.add(`|inactive|${requester ? requester.name : userid} also wants the timer to be on.`).update();
 			this.timerRequesters.add(userid);
 			return false;
 		}
-		if (requester && this.battle.playerTable[requester.id] && this.lastDisabledByUser === requester.id) {
+		if (requester && this.battle.playerTable[requester.userid] && this.lastDisabledByUser === requester.userid) {
 			const remainingCooldownMs = (this.lastDisabledTime || 0) + TIMER_COOLDOWN - Date.now();
 			if (remainingCooldownMs > 0) {
-				this.battle.playerTable[requester.id].sendRoom(
+				this.battle.playerTable[requester.userid].sendRoom(
 					`|inactiveoff|The timer can't be re-enabled so soon after disabling it (${Math.ceil(remainingCooldownMs / SECONDS)} seconds remaining).`
 				);
 				return false;
@@ -246,17 +239,17 @@ export class RoomBattleTimer {
 		this.nextRequest();
 		return true;
 	}
-	stop(requester?: User) {
+	stop(requester: User) {
 		if (requester) {
-			if (!this.timerRequesters.has(requester.id)) return false;
-			this.timerRequesters.delete(requester.id);
-			this.lastDisabledByUser = requester.id;
+			if (!this.timerRequesters.has(requester.userid)) return false;
+			this.timerRequesters.delete(requester.userid);
+			this.lastDisabledByUser = requester.userid;
 			this.lastDisabledTime = Date.now();
 		} else {
 			this.timerRequesters.clear();
 		}
 		if (this.timerRequesters.size) {
-			this.battle.room.add(`|inactive|${requester!.name} no longer wants the timer on, but the timer is staying on because ${[...this.timerRequesters].join(', ')} still does.`).update();
+			this.battle.room.add(`|inactive|${requester.name} no longer wants the timer on, but the timer is staying on because ${[...this.timerRequesters].join(', ')} still does.`).update();
 			return false;
 		}
 		if (this.end()) {
@@ -382,7 +375,7 @@ export class RoomBattleTimer {
 	checkActivity() {
 		if (this.battle.ended) return;
 		for (const player of this.battle.players) {
-			const isConnected = !!player?.active;
+			const isConnected = !!(player && player.active);
 
 			if (isConnected === player.connected) continue;
 
@@ -440,7 +433,7 @@ export class RoomBattleTimer {
 		for (const player of players) {
 			if (player.turnSecondsLeft > 0) continue;
 			if (this.settings.timeoutAutoChoose && player.secondsLeft > 0 && player.connected) {
-				void this.battle.stream.write(`>${player.slot} default`);
+				this.battle.stream.write(`>${player.slot} default`);
 				didSomething = true;
 			} else {
 				this.battle.forfeitPlayer(player, ' lost due to inactivity.');
@@ -452,24 +445,17 @@ export class RoomBattleTimer {
 }
 
 export class RoomBattle extends RoomGames.RoomGame {
-	readonly gameid: ID;
-	readonly room: GameRoom;
-	readonly title: string;
-	readonly allowRenames: boolean;
-	readonly format: string;
-	readonly gameType: string | undefined;
-	readonly challengeType: ChallengeType;
+	gameid: ID;
+	room: GameRoom;
+	title: string;
+	allowRenames: boolean;
+	format: string;
+	gameType: string | undefined;
 	/**
 	 * The lower player's rating, for searching purposes.
 	 * 0 for unrated battles. 1 for unknown ratings.
 	 */
-	readonly rated: number;
-	/**
-	 * userid that requested extraction -> playerids that accepted the extraction
-	 */
-	readonly allowExtraction: {[k: string]: Set<ID>};
-	readonly stream: Streams.ObjectReadWriteStream<string>;
-	readonly timer: RoomBattleTimer;
+	rated: number;
 	missingBattleStartMessage: boolean;
 	started: boolean;
 	ended: boolean;
@@ -481,16 +467,22 @@ export class RoomBattle extends RoomGames.RoomGame {
 	p2: RoomBattlePlayer;
 	p3: RoomBattlePlayer;
 	p4: RoomBattlePlayer;
+	/**
+	 * userid that requested extraction -> playerids that accepted the extraction
+	 */
+	allowExtraction: {[k: string]: Set<ID>};
 	logData: AnyObject | null;
 	endType: string;
 	/**
 	 * If the battle is ended: an array of the number of Pokemon left for each side.
 	 */
 	score: number[] | null;
-	inputLog: string[] | null;
+	inputLog: string | null;
 	turn: number;
 	rqid: number;
 	requestCount: number;
+	stream: Streams.ObjectReadWriteStream<string>;
+	timer: RoomBattleTimer;
 	constructor(room: GameRoom, formatid: string, options: AnyObject) {
 		super(room);
 		const format = Dex.getFormat(formatid, true);
@@ -502,7 +494,6 @@ export class RoomBattle extends RoomGames.RoomGame {
 
 		this.format = formatid;
 		this.gameType = format.gameType;
-		this.challengeType = options.challengeType;
 		this.rated = options.rated || 0;
 		// true when onCreateBattleRoom has been called
 		this.missingBattleStartMessage = !!options.inputLog;
@@ -550,17 +541,18 @@ export class RoomBattle extends RoomGames.RoomGame {
 
 		const battleOptions = {
 			formatid: this.format,
-			roomid: this.roomid,
+			id: this.id,
 			rated: ratedMessage,
 			seed: options.seed,
 		};
 		if (options.inputLog) {
-			void this.stream.write(options.inputLog);
+			this.stream.write(options.inputLog);
 		} else {
-			void this.stream.write(`>start ` + JSON.stringify(battleOptions));
+			this.stream.write(`>start ` + JSON.stringify(battleOptions));
 		}
 
-		void this.listen();
+		// tslint:disable-next-line: no-floating-promises
+		this.listen();
 
 		this.addPlayer(options.p1, options.p1team || '', options.p1rating);
 		this.addPlayer(options.p2, options.p2team || '', options.p2rating);
@@ -569,7 +561,7 @@ export class RoomBattle extends RoomGames.RoomGame {
 			this.addPlayer(options.p4, options.p4team || '', options.p4rating);
 		}
 		this.timer = new RoomBattleTimer(this);
-		if (Config.forcetimer || this.format.includes('blitz')) this.timer.start();
+		if (Config.forcetimer) this.timer.start();
 		this.start();
 	}
 
@@ -594,7 +586,7 @@ export class RoomBattle extends RoomGames.RoomGame {
 		if (Rooms.global.battleCount === 0) Rooms.global.automaticKillRequest();
 	}
 	choose(user: User, data: string) {
-		const player = this.playerTable[user.id];
+		const player = this.playerTable[user.userid];
 		const [choice, rqid] = data.split('|', 2);
 		if (!player) return;
 		const request = player.request;
@@ -608,13 +600,14 @@ export class RoomBattle extends RoomGames.RoomGame {
 			player.sendRoom(`|error|[Invalid choice] Sorry, too late to make a different move; the next turn has already started`);
 			return;
 		}
+		user.lastDecision = Date.now();
 		request.isWait = true;
 		request.choice = choice;
 
-		void this.stream.write(`>${player.slot} ${choice}`);
+		this.stream.write(`>${player.slot} ${choice}`);
 	}
 	undo(user: User, data: string) {
-		const player = this.playerTable[user.id];
+		const player = this.playerTable[user.userid];
 		const [, rqid] = data.split('|', 2);
 		if (!player) return;
 		const request = player.request;
@@ -630,7 +623,7 @@ export class RoomBattle extends RoomGames.RoomGame {
 		}
 		request.isWait = false;
 
-		void this.stream.write(`>${player.slot} undo`);
+		this.stream.write(`>${player.slot} undo`);
 	}
 	joinGame(user: User, slot?: SideID) {
 		if (!user.can('joinbattle', null, this.room)) {
@@ -638,14 +631,14 @@ export class RoomBattle extends RoomGames.RoomGame {
 			return false;
 		}
 
-		if (user.id in this.playerTable) {
+		if (user.userid in this.playerTable) {
 			user.popup(`You have already joined this battle.`);
 			return false;
 		}
 
 		const validSlots: SideID[] = [];
 		for (const player of this.players) {
-			if (!player.id) validSlots.push(player.slot);
+			if (!player.userid) validSlots.push(player.slot);
 		}
 
 		if (slot && !validSlots.includes(slot)) {
@@ -669,13 +662,13 @@ export class RoomBattle extends RoomGames.RoomGame {
 		if (validSlots.length - 1 < 1 && this.missingBattleStartMessage) {
 			const users = this.players.map(player => {
 				const u = player.getUser();
-				if (!u) throw new Error(`User ${player.name} not found on ${this.roomid} battle creation`);
+				if (!u) throw new Error(`User ${player.name} not found on ${this.id} battle creation`);
 				return u;
 			});
 			Rooms.global.onCreateBattleRoom(users, this.room, {rated: this.rated});
 			this.missingBattleStartMessage = false;
 		}
-		if (user.inRooms.has(this.roomid)) this.onConnect(user);
+		if (user.inRooms.has(this.id)) this.onConnect(user);
 		this.room.update();
 		return true;
 	}
@@ -685,38 +678,27 @@ export class RoomBattle extends RoomGames.RoomGame {
 			user.popup(`Players can't be swapped out in a ${this.room.tour ? "tournament" : "rated"} battle.`);
 			return false;
 		}
-		const player = this.playerTable[user.id];
+		const player = this.playerTable[user.userid];
 		if (!player) {
 			user.popup(`Failed to leave battle - you're not a player.`);
 			return false;
 		}
 
 		this.updatePlayer(player, null);
-		this.room.auth.set(user.id, '+');
+		this.room.auth[user.userid] = '+';
 		this.room.update();
 		return true;
 	}
 
 	async listen() {
 		let next;
-		let disconnected = false;
-		try {
-			// tslint:disable-next-line: no-conditional-assignment
-			while ((next = await this.stream.read())) {
-				this.receive(next.split('\n'));
-			}
-		} catch (err) {
-			// Disconnected processes are already crashlogged when they happen;
-			// also logging every battle room would overwhelm the crashlogger
-			if (err.message.includes('Process disconnected')) {
-				disconnected = true;
-			} else {
-				Monitor.crashlog(err, 'A sim stream');
-			}
+		// tslint:disable-next-line: no-conditional-assignment
+		while ((next = await this.stream.read())) {
+			this.receive(next.split('\n'));
 		}
 		if (!this.ended) {
-			this.room.add(`|bigerror|The simulator process crashed. We've been notified and will fix this ASAP.`);
-			if (!disconnected) Monitor.crashlog(new Error(`Sim stream interrupted`), `A sim stream`);
+			this.room.add(`|bigerror|The simulator process has crashed. We've been notified and will fix this ASAP.`);
+			Monitor.crashlog(new Error(`Process disconnected`), `A battle`);
 			this.started = true;
 			this.ended = true;
 			this.checkActive();
@@ -732,9 +714,6 @@ export class RoomBattle extends RoomGames.RoomGame {
 					this.turn = parseInt(line.slice(6));
 				}
 				this.room.add(line);
-				if (line.startsWith(`|bigerror|You will auto-tie if `)) {
-					if (Config.allowrequestingties) this.room.add(`|-hint|If you want to tie earlier, consider using \`/offertie\`.`);
-				}
 			}
 			this.room.update();
 			if (!this.ended) this.timer.nextRequest();
@@ -776,7 +755,8 @@ export class RoomBattle extends RoomGames.RoomGame {
 			this.started = true;
 			if (!this.ended) {
 				this.ended = true;
-				void this.onEnd(this.logData!.winner);
+				// tslint:disable-next-line: no-floating-promises
+				this.onEnd(this.logData!.winner);
 				this.clearPlayers();
 			}
 			this.checkActive();
@@ -805,17 +785,19 @@ export class RoomBattle extends RoomGames.RoomGame {
 
 			winner = Users.get(winnerid);
 			if (winner && !winner.registered) {
-				this.room.sendUser(winner, '|askreg|' + winner.id);
+				this.room.sendUser(winner, '|askreg|' + winner.userid);
 			}
 			const [score, p1rating, p2rating] = await Ladders(this.format).updateRating(p1name, p2name, p1score, this.room);
-			void this.logBattle(score, p1rating, p2rating);
+			// tslint:disable-next-line: no-floating-promises
+			this.logBattle(score, p1rating, p2rating);
 		} else if (Config.logchallenges) {
 			if (winnerid === p1id) {
 				p1score = 1;
 			} else if (winnerid === p2id) {
 				p1score = 0;
 			}
-			void this.logBattle(p1score);
+			// tslint:disable-next-line: no-floating-promises
+			this.logBattle(p1score);
 		} else {
 			this.logData = null;
 		}
@@ -824,27 +806,27 @@ export class RoomBattle extends RoomGames.RoomGame {
 		// reflect any changes that may have been made to the replay's hidden status).
 		if (this.replaySaved || Config.autosavereplays) {
 			const uploader = Users.get(winnerid || p1id);
-			if (uploader?.connections[0]) {
-				Chat.parse('/savereplay silent', this.room, uploader, uploader.connections[0]);
+			if (uploader && uploader.connections[0]) {
+				Chat.parse('/savereplay', this.room, uploader, uploader.connections[0]);
 			}
 		}
 		const parentGame = this.room.parent && this.room.parent.game;
 		// @ts-ignore - Tournaments aren't TS'd yet
-		if (parentGame?.onBattleWin) {
+		if (parentGame && parentGame.onBattleWin) {
 			// @ts-ignore
 			parentGame.onBattleWin(this.room, winnerid);
 		}
 		// If the room's replay was hidden, disable users from joining after the game is over
 		if (this.room.hideReplay) {
-			this.room.settings.modjoin = '%';
-			this.room.settings.isPrivate = 'hidden';
+			this.room.modjoin = '%';
+			this.room.isPrivate = 'hidden';
 		}
 		this.room.update();
 	}
 	async logBattle(
 		p1score: number, p1rating: AnyObject | null = null, p2rating: AnyObject | null = null,
 		p3rating: AnyObject | null = null, p4rating: AnyObject | null = null
-	) {
+		) {
 		if (Dex.getFormat(this.format, true).noLog) return;
 		const logData = this.logData;
 		if (!logData) return;
@@ -871,7 +853,7 @@ export class RoomBattle extends RoomGames.RoomGame {
 		if (!p1rating) logData.ladderError = true;
 		const date = new Date();
 		logData.timestamp = '' + date;
-		logData.roomid = this.room.roomid;
+		logData.id = this.room.id;
 		logData.format = this.room.format;
 
 		const logsubfolder = Chat.toTimestamp(date).split(' ')[0];
@@ -879,21 +861,21 @@ export class RoomBattle extends RoomGames.RoomGame {
 		const tier = this.room.format.toLowerCase().replace(/[^a-z0-9]+/g, '');
 		const logpath = `logs/${logfolder}/${tier}/${logsubfolder}/`;
 		await FS(logpath).mkdirp();
-		await FS(logpath + this.room.roomid + '.log.json').write(JSON.stringify(logData));
+		await FS(logpath + this.room.id + '.log.json').write(JSON.stringify(logData));
 		// console.log(JSON.stringify(logData));
 	}
 	onConnect(user: User, connection: Connection | null = null) {
 		// this handles joining a battle in which a user is a participant,
 		// where the user has already identified before attempting to join
 		// the battle
-		const player = this.playerTable[user.id];
+		const player = this.playerTable[user.userid];
 		if (!player) return;
 		player.updateChannel(connection || user);
 		const request = player.request;
 		if (request) {
 			let data = `|request|${request.request}`;
 			if (request.choice) data += `\n|sentchoice|${request.choice}`;
-			(connection || user).sendTo(this.roomid, data);
+			(connection || user).sendTo(this.id, data);
 		}
 		if (!player.active) this.onJoin(user);
 	}
@@ -901,14 +883,14 @@ export class RoomBattle extends RoomGames.RoomGame {
 		this.onConnect(user, connection);
 	}
 	onRename(user: User, oldUserid: ID, isJoining: boolean, isForceRenamed: boolean) {
-		if (user.id === oldUserid) return;
+		if (user.userid === oldUserid) return;
 		if (!this.playerTable) {
 			// !! should never happen but somehow still does
-			user.games.delete(this.roomid);
+			user.games.delete(this.id);
 			return;
 		}
 		if (!(oldUserid in this.playerTable)) {
-			if (user.id in this.playerTable) {
+			if (user.userid in this.playerTable) {
 				// this handles a user renaming themselves into a user in the
 				// battle (e.g. by using /nick)
 				this.onConnect(user);
@@ -921,8 +903,8 @@ export class RoomBattle extends RoomGames.RoomGame {
 				const message = isForceRenamed ? " lost by having an inappropriate name." : " forfeited by changing their name.";
 				this.forfeitPlayer(player, message);
 			}
-			if (!(user.id in this.playerTable)) {
-				user.games.delete(this.roomid);
+			if (!(user.userid in this.playerTable)) {
+				user.games.delete(this.id);
 			}
 			return;
 		}
@@ -930,7 +912,7 @@ export class RoomBattle extends RoomGames.RoomGame {
 			this.onLeave(user, oldUserid);
 			return;
 		}
-		if (user.id in this.playerTable) return;
+		if (user.userid in this.playerTable) return;
 		const player = this.playerTable[oldUserid];
 		if (player) {
 			this.updatePlayer(player, user);
@@ -939,10 +921,10 @@ export class RoomBattle extends RoomGames.RoomGame {
 			name: user.name,
 			avatar: user.avatar,
 		};
-		void this.stream.write(`>player ${player.slot} ` + JSON.stringify(options));
+		this.stream.write(`>player ${player.slot} ` + JSON.stringify(options));
 	}
 	onJoin(user: User) {
-		const player = this.playerTable[user.id];
+		const player = this.playerTable[user.userid];
 		if (player && !player.active) {
 			player.active = true;
 			this.timer.checkActivity();
@@ -950,8 +932,8 @@ export class RoomBattle extends RoomGames.RoomGame {
 		}
 	}
 	onLeave(user: User, oldUserid?: ID) {
-		const player = this.playerTable[oldUserid || user.id];
-		if (player?.active) {
+		const player = this.playerTable[oldUserid || user.userid];
+		if (player && player.active) {
 			player.sendRoom(`|request|null`);
 			player.active = false;
 			this.timer.checkActivity();
@@ -964,18 +946,18 @@ export class RoomBattle extends RoomGames.RoomGame {
 			this.tie();
 			return true;
 		}
-		const player = this.playerTable[user.id];
+		const player = this.playerTable[user.userid];
 		if (!player) return false;
-		void this.stream.write(`>forcewin ${player.slot}`);
+		this.stream.write(`>forcewin ${player.slot}`);
 	}
 	tie() {
-		void this.stream.write(`>forcetie`);
+		this.stream.write(`>forcetie`);
 	}
 	tiebreak() {
-		void this.stream.write(`>tiebreak`);
+		this.stream.write(`>tiebreak`);
 	}
 	forfeit(user: User | string, message = '') {
-		if (typeof user !== 'string') user = user.id;
+		if (typeof user !== 'string') user = user.userid;
 		else user = toID(user);
 
 		if (!(user in this.playerTable)) return false;
@@ -989,7 +971,7 @@ export class RoomBattle extends RoomGames.RoomGame {
 		this.room.add(`|-message|${player.name}${message}`);
 		this.endType = 'forfeit';
 		const otherids = ['p2', 'p1'];
-		void this.stream.write(`>forcewin ${otherids[player.num - 1]}`);
+		this.stream.write(`>forcewin ${otherids[player.num - 1]}`);
 		return true;
 	}
 
@@ -1011,11 +993,11 @@ export class RoomBattle extends RoomGames.RoomGame {
 				team,
 				rating: Math.round(rating),
 			};
-			void this.stream.write(`>player ${slot} ${JSON.stringify(options)}`);
+			this.stream.write(`>player ${slot} ${JSON.stringify(options)}`);
 		}
 
-		if (user) this.room.auth.set(player.id, Users.PLAYER_SYMBOL);
-		if (user?.inRooms.has(this.roomid)) this.onConnect(user);
+		if (user) this.room.auth[user.userid] = Users.PLAYER_SYMBOL;
+		if (user && user.inRooms.has(this.id)) this.onConnect(user);
 		return player;
 	}
 
@@ -1023,7 +1005,7 @@ export class RoomBattle extends RoomGames.RoomGame {
 		if (!this.rated) return;
 		for (const player of this.players) {
 			const user = player.getUser();
-			if (user?.forcedPublic) return user.forcedPublic;
+			if (user && user.forcedPublic) return user.forcedPublic;
 		}
 	}
 
@@ -1041,14 +1023,14 @@ export class RoomBattle extends RoomGames.RoomGame {
 				name: player.name,
 				avatar: user.avatar,
 			};
-			void this.stream.write(`>player ${slot} ` + JSON.stringify(options));
+			this.stream.write(`>player ${slot} ` + JSON.stringify(options));
 
 			this.room.add(`|player|${slot}|${player.name}|${user.avatar}`);
 		} else {
 			const options = {
 				name: '',
 			};
-			void this.stream.write(`>player ${slot} ` + JSON.stringify(options));
+			this.stream.write(`>player ${slot} ` + JSON.stringify(options));
 
 			this.room.add(`|player|${slot}|`);
 		}
@@ -1060,7 +1042,7 @@ export class RoomBattle extends RoomGames.RoomGame {
 		const users = this.players.map(player => {
 			const user = player.getUser();
 			if (!user && !this.missingBattleStartMessage) {
-				throw new Error(`User ${player.name} not found on ${this.roomid} battle creation`);
+				throw new Error(`User ${player.name} not found on ${this.id} battle creation`);
 			}
 			return user;
 		});
@@ -1102,7 +1084,8 @@ export class RoomBattle extends RoomGames.RoomGame {
 		this.p4 = null;
 
 		this.ended = true;
-		void this.stream.destroy();
+		// tslint:disable-next-line: no-floating-promises
+		this.stream.destroy();
 		if (this.active) {
 			Rooms.global.battleCount += -1;
 			this.active = false;
@@ -1114,17 +1097,15 @@ export class RoomBattle extends RoomGames.RoomGame {
 }
 
 export class RoomBattleStream extends BattleStream {
-	readonly battle: Battle;
+	battle: Battle;
 	constructor() {
 		super({keepAlive: true});
-		this.battle = null!;
+		// @ts-ignore
+		this.battle = null;
 	}
 
 	_write(chunk: string) {
 		const startTime = Date.now();
-		if (this.battle && Config.debugsimprocesses && process.send) {
-			process.send('DEBUG\n' + this.battle.inputLog.join('\n') + '\n' + chunk);
-		}
 		try {
 			this._writeLines(chunk);
 		} catch (err) {
@@ -1138,7 +1119,7 @@ export class RoomBattleStream extends BattleStream {
 			this.push(`update\n|html|<div class="broadcast-red"><b>The battle crashed</b><br />Don't worry, we're working on fixing it.</div>`);
 			if (battle) {
 				for (const side of battle.sides) {
-					if (side?.requestState) {
+					if (side && side.requestState) {
 						this.push(`sideupdate\n${side.id}\n|error|[Invalid choice] The battle crashed`);
 					}
 				}
@@ -1154,26 +1135,25 @@ export class RoomBattleStream extends BattleStream {
 	_writeLine(type: string, message: string) {
 		switch (type) {
 		case 'eval':
+			/* eslint-disable no-eval, no-unused-vars */
 			const battle = this.battle;
-			battle.inputLog.push(`>${type} ${message}`);
+			const p1 = battle && battle.sides[0];
+			const p2 = battle && battle.sides[1];
+			const p3 = battle && battle.sides[2];
+			const p4 = battle && battle.sides[3];
+			const p1active = p1 && p1.active[0];
+			const p2active = p2 && p2.active[0];
+			const p3active = p3 && p3.active[0];
+			const p4active = p4 && p4.active[0];
+			battle.inputLog.push(`${type} ${message}`);
 			message = message.replace(/\f/g, '\n');
 			battle.add('', '>>> ' + message.replace(/\n/g, '\n||'));
 			try {
-				/* eslint-disable no-eval, @typescript-eslint/no-unused-vars */
-				const p1 = battle?.sides[0];
-				const p2 = battle?.sides[1];
-				const p3 = battle?.sides[2];
-				const p4 = battle?.sides[3];
-				const p1active = p1?.active[0];
-				const p2active = p2?.active[0];
-				const p3active = p3?.active[0];
-				const p4active = p4?.active[0];
+				// tslint:disable-next-line: no-eval
 				let result = eval(message);
-				/* eslint-enable no-eval, @typescript-eslint/no-unused-vars */
-
-				if (result?.then) {
+				if (result && result.then) {
 					result.then((unwrappedResult: any) => {
-						unwrappedResult = Utils.visualize(unwrappedResult);
+						unwrappedResult = Chat.stringify(unwrappedResult);
 						battle.add('', 'Promise -> ' + unwrappedResult);
 						battle.sendUpdates();
 					}, (error: Error) => {
@@ -1181,13 +1161,14 @@ export class RoomBattleStream extends BattleStream {
 						battle.sendUpdates();
 					});
 				} else {
-					result = Utils.visualize(result);
+					result = Chat.stringify(result);
 					result = result.replace(/\n/g, '\n||');
 					battle.add('', '<<< ' + result);
 				}
 			} catch (e) {
 				battle.add('', '<<< error: ' + e.message);
 			}
+			/* eslint-enable no-eval, no-unused-vars */
 			break;
 		default: super._writeLine(type, message);
 		}
@@ -1241,7 +1222,7 @@ if (!PM.isParentProcess) {
 		});
 	}
 
-	// eslint-disable-next-line no-eval
+	// tslint:disable-next-line: no-eval
 	Repl.start(`sim-${process.pid}`, cmd => eval(cmd));
 } else {
 	PM.spawn(global.Config ? Config.simulatorprocesses : 1);

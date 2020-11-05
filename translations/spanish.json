@@ -5,9 +5,6 @@
 		"namelocked": "namelocked",
 		"locked": "locked",
 
-		"autoconfirmed": "autoconfirmado",
-		"trusted": "de confianza",
-
 		"Please follow the rules:": "Por favor sigue las reglas:",
 		"[TN: Link to the PS rules for your language (path after pokemonshowdown.com]/rules": "/pages/rules-es",
 		"Global Rules": "Reglas Globales",
@@ -18,7 +15,8 @@
 		"% <strong>Global Driver</strong> - The above, and they can also lock users and check for alts": "% <strong>Global Driver</strong> - Lo mismo que arriba y también pueden dar locks y revisar las alts",
 		"@ <strong>Global Moderator</strong> - The above, and they can globally ban users": "@ <strong>Global Moderator</strong> - Lo mismo que arriba y además pueden expulsar globalmente del servidor",
 		"* <strong>Global Bot</strong> - Like Moderator, but makes it clear that this user is a bot": "* <strong>Global Bot</strong> - Igual que un moderador, pero el símbolo identifica que es un Bot",
-		"&amp; <strong>Global Administrator</strong> - They can do anything, like change what this message says and promote users globally": "&amp; <strong>Global Administrator</strong> - Pueden hacer cualquier cosa, como cambiar lo que dice este mensaje",
+		"&amp; <strong>Global Leader</strong> - The above, and they can promote to global moderator and force ties": "&amp; <strong>Global Leader</strong> - Lo mismo que arriba y también pueden promover a otros a moderador global y forzar empates",
+		"~ <strong>Global Administrator</strong> -  They can do anything, like change what this message says": "~ <strong>Global Administrator</strong> - Pueden hacer cualquier cosa, como cambiar lo que dice este mensaje",
 
 		"<strong>Room ranks</strong>": "<strong>Rangos de Sala</strong>",
 		"+ <strong>Voice</strong> - They can use ! commands like !groups": "+ <strong>Voice</strong> - Pueden utilizar comandos con ! como !groups",
@@ -38,9 +36,9 @@
 		"DATA COMMANDS": "COMANDOS DE DATOS",
 		"DRIVER COMMANDS": "COMANDOS DE DRIVER",
 		"MODERATOR COMMANDS": "COMANDOS DE MODERATOR",
-		"ADMIN COMMANDS": "COMANDOS DE ADMINISTRATOR",
+		"LEADER COMMANDS": "COMANDOS DE LEADER",
 
-		"(replace / with ! to broadcast. Broadcasting requires: + % @ # &)": "(sustituye / con ! para hacer público un comando. Esto requiere: + % @ # &)",
+		"(replace / with ! to broadcast. Broadcasting requires: + % @ # & ~)": "(sustituye / con ! para hacer público un comando. Esto requiere: + % @ # & ~)",
 
 		"<strong>Room punishments</strong>:": "<strong>Sanciones de la sala</strong>:",
 		"<strong>warn</strong> - Displays a popup with the rules.": "<strong>warn</strong> - Muestra una ventana de di&aacute;logo con las reglas.",
@@ -118,17 +116,6 @@
 
 		"Your message contained banned words in this room.": "Tu mensaje contiene palabras prohíbidas en esta sala.",
 		"You can't send the same message again so soon.": "No puedes mandar el mismo mensaje tan pronto.",
-		"Due to this room being a high traffic room, your message must contain at least two letters.": "Debido a que esta sala es de mucho tráfico de mensajes, tu mensaje tiene que contener al menos dos letras.",
-
-		"You are already blocking private messages! To unblock, use /unblockpms": "¡Ya estás bloqueando mensajes privados! Para desbloquearlos usa /unblockpms",
-		"You are now blocking private messages, except from staff and ${rank}.": "Ahora estás bloqueando mensajes privados, con excepción del staff y ${rank}.",
-		"You are now blocking private messages, except from staff and ${status} users.": "Ahora estás bloqueando mensajes privados, con excepción del staff y usuarios ${status}.",
-		"You are now blocking private messages, except from staff.": "Ahora estás bloqueando mensajes privados, con excepción del staff.",
-		"You are not blocking private messages! To block, use /blockpms": "¡No estás bloqueando mensajes privados! Para bloquearlos usa /blockpms",
-		"You are no longer blocking private messages.": "Ya no estás bloqueando mensajes privados.",
-		"You are now blocking all incoming challenge requests.": "Ahora estás bloqueando todas las solicitudes de batalla entrantes",
-		"You are already blocking challenges!": "¡Ya estás bloqueando solicitudes de batalla!",
-		"You are already available for challenges!": "¡Ya estás disponible para recibir solicitudes de batalla!",
-		"You are available for challenges from now on.": "Estás disponible para recibir solicitudes de batalla de ahora en adelante."
+		"Due to this room being a high traffic room, your message must contain at least two letters.": "Debido a que esta sala es de mucho tráfico de mensajes, tu mensaje tiene que contener al menos dos letras."
 	}
 }

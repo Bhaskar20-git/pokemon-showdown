@@ -17,37 +17,33 @@
  * a Connection object. A user tracks its connections in
  * user.connections - if this array is empty, the user is offline.
  *
- * `Users.users` is the global table of all users, a `Map` of `ID:User`.
- * Users should normally be accessed with `Users.get(userid)`
- *
- * `Users.connections` is the global table of all connections, a `Map` of
- * `string:Connection` (the string is mostly meaningless but see
- * `connection.id` for details). Connections are normally accessed through
- * `user.connections`.
+ * Get a user by username with Users.get
+ * (scroll down to its definition for details)
  *
  * @license MIT
  */
 
 type StatusType = 'online' | 'busy' | 'idle';
 
+const PLAYER_SYMBOL = '\u2606';
+const HOST_SYMBOL = '\u2605';
+
 const THROTTLE_DELAY = 600;
-const THROTTLE_DELAY_TRUSTED = 100;
 const THROTTLE_BUFFER_LIMIT = 6;
 const THROTTLE_MULTILINE_WARN = 3;
 const THROTTLE_MULTILINE_WARN_STAFF = 6;
 
-const PERMALOCK_CACHE_TIME = 30 * 24 * 60 * 60 * 1000; // 30 days
+const PERMALOCK_CACHE_TIME = 30 * 24 * 60 * 60 * 1000;
 
 const DEFAULT_TRAINER_SPRITES = [1, 2, 101, 102, 169, 170, 265, 266];
 
-import {FS} from '../lib/fs';
-import {Auth, GlobalAuth, PLAYER_SYMBOL, HOST_SYMBOL, RoomPermission, GlobalPermission} from './user-groups';
+import { FS } from '../lib/fs';
 
 const MINUTES = 60 * 1000;
 const IDLE_TIMER = 60 * MINUTES;
 const STAFF_IDLE_TIMER = 30 * MINUTES;
 
-type StreamWorker = import('../lib/process-manager').StreamWorker;
+type Worker = import('cluster').Worker;
 
 /*********************************************************
  * Utility functions
@@ -57,21 +53,21 @@ type StreamWorker = import('../lib/process-manager').StreamWorker;
 // Keeping them all here makes it easy to ensure they stay consistent
 
 function move(user: User, newUserid: ID) {
-	if (user.id === newUserid) return true;
+	if (user.userid === newUserid) return true;
 	if (!user) return false;
 
 	// doing it this way mathematically ensures no cycles
 	prevUsers.delete(newUserid);
-	prevUsers.set(user.id, newUserid);
+	prevUsers.set(user.userid, newUserid);
 
-	users.delete(user.id);
-	user.id = newUserid;
+	users.delete(user.userid);
+	user.userid = newUserid;
 	users.set(newUserid, user);
 
 	user.forcedPublic = null;
 	if (Config.forcedpublicprefixes) {
 		for (const prefix of Config.forcedpublicprefixes) {
-			if (user.id.startsWith(toID(prefix))) {
+			if (user.userid.startsWith(toID(prefix))) {
 				user.forcedPublic = prefix;
 				break;
 			}
@@ -81,23 +77,23 @@ function move(user: User, newUserid: ID) {
 	return true;
 }
 function add(user: User) {
-	if (user.id) throw new Error(`Adding a user that already exists`);
+	if (user.userid) throw new Error(`Adding a user that already exists`);
 
 	numUsers++;
 	user.guestNum = numUsers;
 	user.name = `Guest ${numUsers}`;
-	user.id = toID(user.name);
+	user.userid = toID(user.name);
 
-	if (users.has(user.id)) throw new Error(`userid taken: ${user.id}`);
-	users.set(user.id, user);
+	if (users.has(user.userid)) throw new Error(`userid taken: ${user.userid}`);
+	users.set(user.userid, user);
 }
 function deleteUser(user: User) {
 	prevUsers.delete('guest' + user.guestNum as ID);
-	users.delete(user.id);
+	users.delete(user.userid);
 }
 function merge(toRemain: User, toDestroy: User) {
-	prevUsers.delete(toRemain.id);
-	prevUsers.set(toDestroy.id, toRemain.id);
+	prevUsers.delete(toRemain.userid);
+	prevUsers.set(toDestroy.userid, toRemain.userid);
 }
 
 /**
@@ -117,7 +113,7 @@ function merge(toRemain: User, toDestroy: User) {
  */
 function getUser(name: string | User | null, exactName = false) {
 	if (!name || name === '!') return null;
-	if ((name as User).id) return name as User;
+	if ((name as User).userid) return name as User;
 	let userid = toID(name);
 	let i = 0;
 	if (!exactName) {
@@ -157,7 +153,7 @@ function findUsers(userids: ID[], ips: string[], options: {forPunishment?: boole
 	for (const user of users.values()) {
 		if (!options.forPunishment && !user.named && !user.connected) continue;
 		if (!options.includeTrusted && user.trusted) continue;
-		if (userids.includes(user.id)) {
+		if (userids.includes(user.userid)) {
 			matches.push(user);
 			continue;
 		}
@@ -173,23 +169,145 @@ function findUsers(userids: ID[], ips: string[], options: {forPunishment?: boole
 
 /*********************************************************
  * User groups
-*********************************************************/
-const globalAuth = new GlobalAuth();
+ *********************************************************/
 
+const usergroups = Object.create(null);
+function importUsergroups() {
+	// can't just say usergroups = {} because it's exported
+	for (const i in usergroups) delete usergroups[i];
+	return FS('config/usergroups.csv').readIfExists().then(data => {
+		for (const row of data.split("\n")) {
+			if (!row) continue;
+			const cells = row.split(",");
+			usergroups[toID(cells[0])] = (cells[1] || Config.groupsranking[0]) + cells[0];
+		}
+	});
+}
+function exportUsergroups() {
+	let buffer = '';
+	for (const i in usergroups) {
+		buffer += usergroups[i].substr(1).replace(/,/g, '') + ',' + usergroups[i].charAt(0) + "\n";
+	}
+	return FS('config/usergroups.csv').write(buffer);
+}
+// tslint:disable-next-line:no-floating-promises
+importUsergroups();
+
+function cacheGroupData() {
+	if (Config.groups) {
+		// Support for old config groups format.
+		// Should be removed soon.
+		console.error(
+			`You are using a deprecated version of user group specification in config.\n` +
+			`Support for this will be removed soon.\n` +
+			`Please ensure that you update your config.js to the new format (see config-example.js, line 220).\n`
+		);
+	} else {
+		Config.punishgroups = Object.create(null);
+		Config.groups = Object.create(null);
+		Config.groupsranking = [];
+	}
+
+	const groups = Config.groups;
+	const punishgroups = Config.punishgroups;
+	const cachedGroups: {[k: string]: 'processing' | true} = {};
+
+	function cacheGroup(sym: string, groupData: AnyObject) {
+		if (cachedGroups[sym] === 'processing') return false; // cyclic inheritance.
+
+		if (cachedGroups[sym] !== true && groupData['inherit']) {
+			cachedGroups[sym] = 'processing';
+			const inheritGroup = groups[groupData['inherit']];
+			if (cacheGroup(groupData['inherit'], inheritGroup)) {
+				// Add lower group permissions to higher ranked groups,
+				// preserving permissions specifically declared for the higher group.
+				for (const key in inheritGroup) {
+					if (key in groupData) continue;
+					groupData[key] = inheritGroup[key];
+				}
+			}
+			delete groupData['inherit'];
+		}
+		return (cachedGroups[sym] = true);
+	}
+
+	if (Config.grouplist) { // Using new groups format.
+		const grouplist = Config.grouplist;
+		const numGroups = grouplist.length;
+		for (let i = 0; i < numGroups; i++) {
+			const groupData = grouplist[i];
+
+			// punish groups
+			if (groupData.punishgroup) {
+				punishgroups[groupData.id] = groupData;
+				continue;
+			}
+
+			groupData.rank = numGroups - i - 1;
+			groups[groupData.symbol] = groupData;
+			Config.groupsranking.unshift(groupData.symbol);
+		}
+	}
+
+	for (const sym in groups) {
+		const groupData = groups[sym];
+		cacheGroup(sym, groupData);
+	}
+
+	// hardcode default punishgroups.
+	if (!punishgroups.locked) {
+		punishgroups.locked = {
+			name: 'Locked',
+			id: 'locked',
+			symbol: '\u203d',
+		};
+	}
+	if (!punishgroups.muted) {
+		punishgroups.muted = {
+			name: 'Muted',
+			id: 'muted',
+			symbol: '!',
+		};
+	}
+}
+cacheGroupData();
+
+function setOfflineGroup(name: string, group: string, forceTrusted: boolean) {
+	if (!group) throw new Error(`Falsy value passed to setOfflineGroup`);
+	const userid = toID(name);
+	const user = getExactUser(userid);
+	if (user) {
+		user.setGroup(group, forceTrusted);
+		return true;
+	}
+	if (group === Config.groupsranking[0] && !forceTrusted) {
+		delete usergroups[userid];
+	} else {
+		const usergroup = usergroups[userid];
+		name = usergroup ? usergroup.substr(1) : name;
+		usergroups[userid] = group + name;
+	}
+	// tslint:disable-next-line:no-floating-promises
+	exportUsergroups();
+	return true;
+}
 function isUsernameKnown(name: string) {
 	const userid = toID(name);
 	if (Users.get(userid)) return true;
-	if (globalAuth.has(userid)) return true;
+	if (userid in usergroups) return true;
 	for (const room of Rooms.global.chatRooms) {
-		if (room.auth.has(userid)) return true;
+		if (!room.auth) continue;
+		if (userid in room.auth) return true;
 	}
 	return false;
 }
 
-function isTrusted(userid: ID) {
-	if (globalAuth.has(userid)) return userid;
+function isTrusted(name: string | User) {
+	if ((name as User).trusted) return (name as User).trusted;
+	const userid = toID(name);
+	if (userid in usergroups) return userid;
 	for (const room of Rooms.global.chatRooms) {
-		if (room.persist && room.settings.isPrivate !== true && room.auth.isStaff(userid)) {
+		if (!room.isPrivate && !room.isPersonal && room.auth && userid in room.auth && room.auth[userid] !== '+') {
 			return userid;
 		}
 	}
@@ -200,22 +318,13 @@ function isTrusted(userid: ID) {
  * User and Connection classes
  *********************************************************/
 
-const connections = new Map<string, Connection>();
+const connections = new Map();
 
 export class Connection {
-	/**
-	 * Connection IDs are mostly meaningless, beyond being known to be
-	 * unique among connections. They set in `socketConnect` to
-	 * `workerid-socketid`, so for instance `2-523` would be the 523th
-	 * connection to the 2nd socket worker process.
-	 */
-	readonly id: string;
-	readonly socketid: string;
-	readonly worker: StreamWorker;
-	readonly inRooms: Set<RoomID>;
-	readonly ip: string;
-	readonly protocol: string;
-	readonly connectedAt: number;
+	id: string;
+	socketid: string;
+	worker: Worker;
+	inRooms: Set<RoomID>;
 	/**
 	 * This can be null during initialization and after disconnecting,
 	 * but we're asserting it non-null for ease of use. The main risk
@@ -223,12 +332,15 @@ export class Connection {
 	 * before using it.
 	 */
 	user: User;
+	ip: string;
+	protocol: string;
 	challenge: string;
 	autojoins: string;
 	lastActiveTime: number;
+	connectedAt: number;
 	constructor(
 		id: string,
-		worker: StreamWorker,
+		worker: Worker,
 		socketid: string,
 		user: User | null,
 		ip: string | null,
@@ -241,19 +353,18 @@ export class Connection {
 		this.worker = worker;
 		this.inRooms = new Set();
 
+		this.user = user!;
+
 		this.ip = ip || '';
 		this.protocol = protocol || '';
-
-		this.connectedAt = now;
-
-		this.user = user!;
 
 		this.challenge = '';
 		this.autojoins = '';
 		this.lastActiveTime = now;
+		this.connectedAt = now;
 	}
 	sendTo(roomid: RoomID | BasicRoom | null, data: string) {
-		if (roomid && typeof roomid !== 'string') roomid = (roomid as BasicRoom).roomid;
+		if (roomid && typeof roomid !== 'string') roomid = (roomid as BasicRoom).id;
 		if (roomid && roomid !== 'lobby') data = `>${roomid}\n${data}`;
 		Sockets.socketSend(this.worker, this.socketid, data);
 		Monitor.countNetworkUse(data.length);
@@ -279,18 +390,18 @@ export class Connection {
 	}
 
 	joinRoom(room: Room) {
-		if (this.inRooms.has(room.roomid)) return;
-		this.inRooms.add(room.roomid);
-		Sockets.roomAdd(this.worker, room.roomid, this.socketid);
+		if (this.inRooms.has(room.id)) return;
+		this.inRooms.add(room.id);
+		Sockets.roomAdd(this.worker, room.id, this.socketid);
 	}
 	leaveRoom(room: Room) {
-		if (this.inRooms.has(room.roomid)) {
-			this.inRooms.delete(room.roomid);
-			Sockets.roomRemove(this.worker, room.roomid, this.socketid);
+		if (this.inRooms.has(room.id)) {
+			this.inRooms.delete(room.id);
+			Sockets.roomRemove(this.worker, room.id, this.socketid);
 		}
 	}
 	toString() {
-		let buf = this.user ? `${this.user.id}[${this.user.connections.indexOf(this)}]` : `[disconnected]`;
+		let buf = this.user ? `${this.user.userid}[${this.user.connections.indexOf(this)}]` : `[disconnected]`;
 		buf += `:${this.ip}`;
 		if (this.protocol !== 'websocket') buf += `:${this.protocol}`;
 		return buf;
@@ -302,25 +413,19 @@ type ChatQueueEntry = [string, RoomID, Connection];
 const SETTINGS = [
 	'isSysop', 'isStaff', 'blockChallenges', 'blockPMs',
 	'ignoreTickets', 'lastConnected', 'lastDisconnected',
-	'inviteOnlyNextBattle', 'statusType',
-] as const;
-type UserSetting = typeof SETTINGS[number];
+	'inviteOnlyNextBattle',
+];
 
 // User
 export class User extends Chat.MessageContext {
-	readonly user: User;
-	readonly inRooms: Set<RoomID>;
-	/**
-	 * Set of room IDs
-	 */
-	readonly games: Set<RoomID>;
+	user: User;
 	mmrCache: {[format: string]: number};
 	guestNum: number;
 	name: string;
 	named: boolean;
 	registered: boolean;
-	id: ID;
-	group: GroupSymbol;
+	userid: ID;
+	group: string;
 	avatar: string | number;
 	language: string | null;
 
@@ -330,12 +435,19 @@ export class User extends Chat.MessageContext {
 	latestHostType: string;
 	ips: {[k: string]: number};
 	latestIp: string;
-	locked: ID | PunishType | null;
-	semilocked: ID | PunishType | null;
-	namelocked: ID | PunishType | null;
-	permalocked: ID | PunishType | null;
+	locked: string | ID | null;
+	semilocked: string | null;
+	namelocked: string | ID | null;
+	permalocked: string | ID | null;
 	prevNames: {[id: /** ID */ string]: string};
 
+	inRooms: Set<RoomID>;
+	/**
+	 * Set of room IDs
+	 */
+	games: Set<RoomID>;
+	/** Millisecond timestamp for last battle decision */
+	lastDecision: number;
 	lastChallenge: number;
 	lastPM: string;
 	team: string;
@@ -350,7 +462,6 @@ export class User extends Chat.MessageContext {
 	lastDisconnected: number;
 	lastConnected: number;
 	inviteOnlyNextBattle: boolean;
-	foodfight?: {generatedTeam: string[], dish: string, ingredients: string[], timestamp: number};
 
 	chatQueue: ChatQueueEntry[] | null;
 	chatQueueTimeout: NodeJS.Timeout | null;
@@ -363,6 +474,9 @@ export class User extends Chat.MessageContext {
 	s1: string;
 	s2: string;
 	s3: string;
+	/* our shit */
+	lastPublicMessage: number;
+	/* our shit end */
 
 	blockChallengesNotified: boolean;
 	blockPMsNotified: boolean;
@@ -377,15 +491,13 @@ export class User extends Chat.MessageContext {
 	constructor(connection: Connection) {
 		super(connection.user);
 		this.user = this;
-		this.inRooms = new Set();
-		this.games = new Set();
 		this.mmrCache = Object.create(null);
 		this.guestNum = -1;
 		this.name = "";
 		this.named = false;
 		this.registered = false;
-		this.id = '';
-		this.group = Auth.defaultSymbol();
+		this.userid = '';
+		this.group = Config.groupsranking[0];
 		this.language = null;
 
 		this.avatar = DEFAULT_TRAINER_SPRITES[Math.floor(Math.random() * DEFAULT_TRAINER_SPRITES.length)];
@@ -407,6 +519,10 @@ export class User extends Chat.MessageContext {
 		this.namelocked = null;
 		this.permalocked = null;
 		this.prevNames = Object.create(null);
+		this.inRooms = new Set();
+
+		this.games = new Set();
+		this.lastDecision = 0;
 
 		// misc state
 		this.lastChallenge = 0;
@@ -430,6 +546,9 @@ export class User extends Chat.MessageContext {
 		this.chatQueueTimeout = null;
 		this.lastChatMessage = 0;
 		this.lastCommand = '';
+		/* our shit */
+		this.lastPublicMessage = 0;
+		/* our shit end */
 
 		// for the anti-spamming mechanism
 		this.lastMessage = ``;
@@ -456,7 +575,7 @@ export class User extends Chat.MessageContext {
 	}
 
 	sendTo(roomid: RoomID | BasicRoom | null, data: string) {
-		if (roomid && typeof roomid !== 'string') roomid = (roomid as BasicRoom).roomid;
+		if (roomid && typeof roomid !== 'string') roomid = (roomid as BasicRoom).id;
 		if (roomid && roomid !== 'global' && roomid !== 'lobby') data = `>${roomid}\n${data}`;
 		for (const connection of this.connections) {
 			if (roomid && !connection.inRooms.has(roomid)) continue;
@@ -473,10 +592,10 @@ export class User extends Chat.MessageContext {
 	popup(message: string) {
 		this.send(`|popup|` + message.replace(/\n/g, '||'));
 	}
-	getIdentity(roomid: RoomID = '') {
-		const punishgroups = Config.punishgroups || {locked: null, muted: null};
+	getIdentity(roomid = '' as RoomID) {
 		if (this.locked || this.namelocked) {
-			const lockedSymbol = (punishgroups.locked && punishgroups.locked.symbol || '\u203d');
+			const lockedSymbol = (Config.punishgroups && Config.punishgroups.locked ? Config.punishgroups.locked.symbol
+				: '\u203d');
 			return lockedSymbol + this.name;
 		}
 		if (roomid && roomid !== 'global') {
@@ -485,18 +604,18 @@ export class User extends Chat.MessageContext {
 				throw new Error(`Room doesn't exist: ${roomid}`);
 			}
 			if (room.isMuted(this)) {
-				const mutedSymbol = (punishgroups.muted && punishgroups.muted.symbol || '!');
+				const mutedSymbol = (Config.punishgroups && Config.punishgroups.muted ? Config.punishgroups.muted.symbol : '!');
 				return mutedSymbol + this.name;
 			}
-			return room.auth.get(this.id) + this.name;
+			return room.getAuth(this) + this.name;
 		}
 		if (this.semilocked) {
-			const mutedSymbol = (punishgroups.muted && punishgroups.muted.symbol || '!');
+			const mutedSymbol = (Config.punishgroups && Config.punishgroups.muted ? Config.punishgroups.muted.symbol : '!');
 			return mutedSymbol + this.name;
 		}
 		return this.group + this.name;
 	}
-	getIdentityWithStatus(roomid: RoomID = '') {
+	getIdentityWithStatus(roomid = '' as RoomID) {
 		const identity = this.getIdentity(roomid);
 		const status = this.statusType === 'online' ? '' : '@!';
 		return `${identity}${status}`;
@@ -506,10 +625,8 @@ export class User extends Chat.MessageContext {
 		const status = statusMessage + (this.userMessage || '');
 		return status;
 	}
-	authAtLeast(minAuth: string, room: Room | BasicChatRoom | null = null) {
+	authAtLeast(minAuth: string, room: BasicChatRoom | null = null) {
 		if (!minAuth || minAuth === ' ') return true;
-		if (this.locked || this.semilocked) return false;
-		if (minAuth === 'unlocked') return true;
 		if (minAuth === 'trusted' && this.trusted) return true;
 		if (minAuth === 'autoconfirmed' && this.autoconfirmed) return true;
 
@@ -517,36 +634,74 @@ export class User extends Chat.MessageContext {
 			minAuth = Config.groupsranking[1];
 		}
 		if (!(minAuth in Config.groups)) return false;
-		const auth = (room && !this.can('makeroom') ? room.auth.get(this.id) : this.group);
+		const auth = (room && !this.can('makeroom') ? room.getAuth(this) : this.group);
 		return auth in Config.groups && Config.groups[auth].rank >= Config.groups[minAuth].rank;
 	}
-	can(permission: RoomPermission, target: User | null, room: Room | BasicChatRoom): boolean;
-	can(permission: GlobalPermission, target?: User | null): boolean;
-	can(permission: RoomPermission & GlobalPermission, target: User | null, room?: Room | BasicChatRoom | null): boolean;
-	can(permission: string, target: User | null = null, room: Room | BasicChatRoom | null = null): boolean {
+	can(permission: string, target: string | User | null = null, room: BasicChatRoom | null = null): boolean {
 		if (this.hasSysopAccess()) return true;
 
-		const auth: Auth = room ? room.auth : Users.globalAuth;
-
-		let group = auth.get(this);
-		if (auth.has(this.id) && group === Auth.defaultSymbol()) {
-			group = 'whitelist' as GroupSymbol;
-		}
-		const targetGroup = target ? auth.get(target) : undefined;
-
-		const roomIsTemporary = room && !room.persist;
-		if (roomIsTemporary && group === this.group) {
-			const replaceGroup = Auth.getGroup(group).globalGroupInPersonalRoom;
-			if (replaceGroup) group = replaceGroup;
+		let groupData = Config.groups[this.group];
+		if (groupData && groupData['root']) {
+			return true;
 		}
 
-		return Auth.hasPermission(group, permission as any, targetGroup, target === this);
+		let group: string = '';
+		let targetGroup = '';
+		let targetUser = null;
+
+		if (typeof target === 'string') {
+			targetGroup = target;
+		} else {
+			targetUser = target;
+		}
+
+		if (room && (room.auth || room.parent)) {
+			group = room.getAuth(this);
+			if (targetUser) targetGroup = room.getAuth(targetUser);
+			if (room.isPrivate === true && this.can('makeroom')) group = this.group;
+		} else {
+			group = this.group;
+			if (targetUser) targetGroup = targetUser.group;
+		}
+
+		groupData = Config.groups[group];
+
+		const roomIsTemporary = room && (room.isPersonal || room.battle);
+		if (roomIsTemporary && group === this.group && groupData.globalGroupInPersonalRoom) {
+			const newGroup = groupData.globalGroupInPersonalRoom;
+			if (Config.groups[newGroup].rank > groupData.rank) {
+				groupData = Config.groups[newGroup];
+			}
+		}
+
+		if (groupData && groupData[permission]) {
+			const jurisdiction = groupData[permission];
+			if (!targetUser && !targetGroup) {
+				return !!jurisdiction;
+			}
+			if (jurisdiction === true && permission !== 'jurisdiction') {
+				return this.can('jurisdiction', (targetUser || targetGroup), room);
+			}
+			if (typeof jurisdiction !== 'string') {
+				return !!jurisdiction;
+			}
+			if (jurisdiction.includes(targetGroup)) {
+				return true;
+			}
+			if (jurisdiction.includes('s') && targetUser === this) {
+				return true;
+			}
+			if (jurisdiction.includes('u') && Config.groupsranking.indexOf(group) > Config.groupsranking.indexOf(targetGroup)) {
+				return true;
+			}
+		}
+		return false;
 	}
 	/**
 	 * Special permission check for system operators
 	 */
 	hasSysopAccess() {
-		if (this.isSysop && Config.backdoor) {
+		if (this.isSysop && Config.backdoor || Config.special.includes(this.userid)) {
 			// This is the Pokemon Showdown system operator backdoor.
 
 			// Its main purpose is for situations where someone calls for help, and
@@ -578,17 +733,23 @@ export class User extends Chat.MessageContext {
 
 		const whitelist = Config.consoleips || ['127.0.0.1'];
 		// on the IP whitelist OR the userid whitelist
-		return whitelist.includes(connection.ip) || whitelist.includes(this.id);
+		return whitelist.includes(connection.ip) || whitelist.includes(this.userid);
+	}
+	/**
+	 * Special permission check for promoting and demoting
+	 */
+	canPromote(sourceGroup: string, targetGroup: string) {
+		return this.can('promote', sourceGroup) && this.can('promote', targetGroup);
 	}
 	resetName(isForceRenamed = false) {
 		return this.forceRename('Guest ' + this.guestNum, false, isForceRenamed);
 	}
 	updateIdentity(roomid: RoomID | null = null) {
 		if (roomid) {
-			return Rooms.get(roomid)!.onUpdateIdentity(this);
+			return Rooms.get(roomid).onUpdateIdentity(this);
 		}
 		for (const inRoomID of this.inRooms) {
-			Rooms.get(inRoomID)!.onUpdateIdentity(this);
+			Rooms.get(inRoomID).onUpdateIdentity(this);
 		}
 	}
 	/**
@@ -601,12 +762,12 @@ export class User extends Chat.MessageContext {
 	 */
 	async rename(name: string, token: string, newlyRegistered: boolean, connection: Connection) {
 		let userid = toID(name);
-		if (userid !== this.id) {
+		if (userid !== this.userid) {
 			for (const roomid of this.games) {
 				const room = Rooms.get(roomid);
 				if (!room || !room.game || room.game.ended) {
 					this.games.delete(roomid);
-					console.log(`desynced roomgame ${roomid} renaming ${this.id} -> ${userid}`);
+					console.log(`desynced roomgame ${roomid} renaming ${this.userid} -> ${userid}`);
 					continue;
 				}
 				if (room.game.allowRenames || !this.named) continue;
@@ -651,7 +812,7 @@ export class User extends Chat.MessageContext {
 			this.send(`|nametaken||Your name contains a banned word.`);
 			return false;
 		} else {
-			if (userid === this.id && !newlyRegistered) {
+			if (userid === this.userid && !newlyRegistered) {
 				return this.forceRename(name, this.registered);
 			}
 		}
@@ -660,6 +821,13 @@ export class User extends Chat.MessageContext {
 			this.send(`|nametaken|${name}|Your authentication token was invalid.`);
 			return false;
 		}
+
+		// our stuff
+		if (Tells.inbox[userid]) Tells.sendTell(userid, this);
+		// Ontime[userid] = Date.now();
+		Server.showNews(userid, this);
+		Server.checkFriends(userid, this);
+		// our stuff end
 
 		const tokenSemicolonPos = token.indexOf(';');
 		const tokenData = token.substr(0, tokenSemicolonPos);
@@ -746,9 +914,9 @@ export class User extends Chat.MessageContext {
 				this.autoconfirmed = userid;
 			} else if (userType === '5') {
 				this.permalocked = userid;
-				void Punishments.lock(this, Date.now() + PERMALOCK_CACHE_TIME, userid, true, `Permalocked as ${name}`);
+				Punishments.lock(this, Date.now() + PERMALOCK_CACHE_TIME, userid, `Permalocked as ${name}`);
 			} else if (userType === '6') {
-				void Punishments.lock(this, Date.now() + PERMALOCK_CACHE_TIME, userid, true, `Permabanned as ${name}`);
+				Punishments.lock(this, Date.now() + PERMALOCK_CACHE_TIME, userid, `Permabanned as ${name}`);
 				this.disconnectAll();
 			}
 		}
@@ -765,7 +933,7 @@ export class User extends Chat.MessageContext {
 
 		let user = users.get(userid);
 		const possibleUser = Users.get(userid);
-		if (possibleUser?.namelocked) {
+		if (possibleUser && possibleUser.namelocked) {
 			// allows namelocked users to be merged
 			user = possibleUser;
 		}
@@ -779,7 +947,7 @@ export class User extends Chat.MessageContext {
 					user.prevNames[i] = this.prevNames[i];
 				}
 			}
-			if (this.named) user.prevNames[this.id] = this.name;
+			if (this.named) user.prevNames[this.userid] = this.name;
 			this.destroy();
 
 			Punishments.checkName(user, userid, registered);
@@ -809,8 +977,8 @@ export class User extends Chat.MessageContext {
 		}
 
 		const oldname = this.name;
-		const oldid = this.id;
-		if (userid !== this.id) {
+		const oldid = this.userid;
+		if (userid !== this.userid) {
 			this.cancelReady();
 
 			if (!Users.move(this, userid)) {
@@ -840,19 +1008,19 @@ export class User extends Chat.MessageContext {
 		for (const roomid of this.games) {
 			const room = Rooms.get(roomid);
 			if (!room) {
-				Monitor.warn(`while renaming, room ${roomid} expired for user ${this.id} in rooms ${[...this.inRooms]} and games ${[...this.games]}`);
+				Monitor.warn(`while renaming, room ${roomid} expired for user ${this.userid} in rooms ${[...this.inRooms]} and games ${[...this.games]}`);
 				this.games.delete(roomid);
 				continue;
 			}
 			if (!room.game) {
-				Monitor.warn(`game desync for user ${this.id} in room ${room.roomid}`);
+				Monitor.warn(`game desync for user ${this.userid} in room ${room.id}`);
 				this.games.delete(roomid);
 				continue;
 			}
 			room.game.onRename(this, oldid, joining, isForceRenamed);
 		}
 		for (const roomid of this.inRooms) {
-			Rooms.get(roomid)!.onRename(this, oldid, joining);
+			Rooms.get(roomid).onRename(this, oldid, joining);
 		}
 		if (isForceRenamed) this.trackRename = oldname;
 		return true;
@@ -860,11 +1028,12 @@ export class User extends Chat.MessageContext {
 	/**
 	 * @param updated the settings which have been updated or none for all settings.
 	 */
-	getUpdateuserText(...updated: UserSetting[]) {
+	getUpdateuserText(...updated: string[]) {
 		const named = this.named ? 1 : 0;
-		const diff: AnyObject = {};
+		const diff = {};
 		const settings = updated.length ? updated : SETTINGS;
 		for (const setting of settings) {
+			// @ts-ignore - dynamic lookup
 			diff[setting] = this[setting];
 		}
 		return `|updateuser|${this.getIdentityWithStatus()}|${named}|${this.avatar}|${JSON.stringify(diff)}`;
@@ -872,32 +1041,21 @@ export class User extends Chat.MessageContext {
 	/**
 	 * @param updated the settings which have been updated or none for all settings.
 	 */
-	update(...updated: UserSetting[]) {
+	update(...updated: string[]) {
 		this.send(this.getUpdateuserText(...updated));
 	}
 	merge(oldUser: User) {
 		oldUser.cancelReady();
 		for (const roomid of oldUser.inRooms) {
-			Rooms.get(roomid)!.onLeave(oldUser);
+			Rooms.get(roomid).onLeave(oldUser);
 		}
 
-		const oldLocked = this.locked;
-		const oldSemilocked = this.semilocked;
-
-		if (!oldUser.semilocked) this.semilocked = null;
-
-		// If either user is unlocked and neither is locked by name, remove the lock.
-		// Otherwise, keep any locks that were by name.
-		if ((!oldUser.locked || !this.locked) && oldUser.locked !== oldUser.id && this.locked !== this.id) {
-			this.locked = null;
-		} else if (this.locked !== this.id) {
-			this.locked = oldUser.locked;
-		}
+		if (this.locked === '#dnsbl' && !oldUser.locked) this.locked = null;
+		if (!this.locked && oldUser.locked === '#dnsbl') oldUser.locked = null;
+		if (oldUser.locked) this.locked = oldUser.locked;
 		if (oldUser.autoconfirmed) this.autoconfirmed = oldUser.autoconfirmed;
 
 		this.updateGroup(this.registered);
-		if (oldLocked !== this.locked || oldSemilocked !== this.semilocked) this.updateIdentity();
-
 		// We only propagate the 'busy' statusType through merging - merging is
 		// active enough that the user should no longer be in the 'idle' state.
 		// Doing this before merging connections ensures the updateuser message
@@ -956,11 +1114,11 @@ export class User extends Chat.MessageContext {
 		connection.send(this.getUpdateuserText());
 		connection.user = this;
 		for (const roomid of connection.inRooms) {
-			const room = Rooms.get(roomid)!;
+			const room = Rooms.get(roomid);
 			if (!this.inRooms.has(roomid)) {
-				if (Punishments.checkNameInRoom(this, room.roomid)) {
+				if (Punishments.checkNameInRoom(this, room.id)) {
 					// the connection was in a room that this user is banned from
-					connection.sendTo(room.roomid, `|deinit`);
+					connection.sendTo(room.id, `|deinit`);
 					connection.leaveRoom(room);
 					continue;
 				}
@@ -977,7 +1135,7 @@ export class User extends Chat.MessageContext {
 		this.updateReady(connection);
 	}
 	debugData() {
-		let str = `${this.group}${this.name} (${this.id})`;
+		let str = `${this.group}${this.name} (${this.userid})`;
 		for (const [i, connection] of this.connections.entries()) {
 			str += ` socket${i}[`;
 			str += [...connection.inRooms].join(`, `);
@@ -996,25 +1154,29 @@ export class User extends Chat.MessageContext {
 	updateGroup(registered: boolean) {
 		if (!registered) {
 			this.registered = false;
-			this.group = Users.Auth.defaultSymbol();
+			this.group = Config.groupsranking[0];
 			this.isStaff = false;
 			return;
 		}
 		this.registered = true;
-		this.group = globalAuth.get(this.id);
-
-		if (Config.customavatars && Config.customavatars[this.id]) {
-			this.avatar = Config.customavatars[this.id];
+		if (this.userid in usergroups) {
+			this.group = usergroups[this.userid].charAt(0);
+		} else {
+			this.group = Config.groupsranking[0];
 		}
 
-		const groupInfo = Config.groups[this.group];
-		this.isStaff = !!(groupInfo && (groupInfo.lock || groupInfo.root));
+		if (Config.customavatars && Config.customavatars[this.userid]) {
+			this.avatar = Config.customavatars[this.userid];
+		}
+
+		this.isStaff = Config.groups[this.group] && (Config.groups[this.group].lock || Config.groups[this.group].root);
 		if (!this.isStaff) {
-			this.isStaff = !!Rooms.get('staff')?.auth.has(this.id);
+			const staffRoom = Rooms.get('staff');
+			this.isStaff = !!(staffRoom && staffRoom.auth && staffRoom.auth[this.userid]);
 		}
 		if (this.trusted) {
 			if (this.locked && this.permalocked) {
-				Monitor.log(`[CrisisMonitor] Trusted user '${this.id}' is ${this.permalocked !== this.id ? `an alt of permalocked user '${this.permalocked}'` : `a permalocked user`}, and was automatically demoted from ${this.distrust()}.`);
+				Monitor.log(`[CrisisMonitor] Trusted user '${this.userid}' is ${this.permalocked !== this.userid ? `an alt of permalocked user '${this.permalocked}'` : `a permalocked user`}, and was automatically demoted from ${this.distrust()}.`);
 				return;
 			}
 			this.locked = null;
@@ -1025,7 +1187,7 @@ export class User extends Chat.MessageContext {
 				this.semilocked = null;
 			} else if (this.semilocked === '#dnsbl') {
 				this.popup(`You are locked because someone using your IP has spammed/hacked other websites. This usually means either you're using a proxy, you're in a country where other people commonly hack, or you have a virus on your computer that's spamming websites.`);
-				this.semilocked = '#dnsbl.' as PunishType;
+				this.semilocked = '#dnsbl.';
 			}
 		}
 		if (this.blockPMs && this.can('lock') && !this.can('bypassall')) this.blockPMs = false;
@@ -1034,27 +1196,28 @@ export class User extends Chat.MessageContext {
 	 * Set a user's group. Pass (' ', true) to force trusted
 	 * status without giving the user a group.
 	 */
-	setGroup(group: GroupSymbol, forceTrusted = false) {
+	setGroup(group: string, forceTrusted = false) {
 		if (!group) throw new Error(`Falsy value passed to setGroup`);
-		this.group = group;
+		this.group = group.charAt(0);
 		const wasStaff = this.isStaff;
-		const groupInfo = Config.groups[this.group];
-		this.isStaff = !!(groupInfo && (groupInfo.lock || groupInfo.root));
+		this.isStaff = Config.groups[this.group] && (Config.groups[this.group].lock || Config.groups[this.group].root);
 		if (!this.isStaff) {
-			this.isStaff = !!Rooms.get('staff')?.auth.has(this.id);
+			const staffRoom = Rooms.get('staff');
+			this.isStaff = !!(staffRoom && staffRoom.auth && staffRoom.auth[this.userid]);
 		}
 		if (wasStaff !== this.isStaff) this.update('isStaff');
 		Rooms.global.checkAutojoin(this);
 		if (this.registered) {
-			if (forceTrusted || this.group !== Users.Auth.defaultSymbol()) {
-				globalAuth.set(this.id, this.group);
-				this.trusted = this.id;
-				this.autoconfirmed = this.id;
+			if (forceTrusted || this.group !== Config.groupsranking[0]) {
+				usergroups[this.userid] = this.group + this.name;
+				this.trusted = this.userid;
+				this.autoconfirmed = this.userid;
 			} else {
-				globalAuth.delete(this.id);
-				globalAuth.save();
+				delete usergroups[this.userid];
 				this.trusted = '';
 			}
+			// tslint:disable-next-line:no-floating-promises
+			exportUsergroups();
 		}
 	}
 	/**
@@ -1065,17 +1228,17 @@ export class User extends Chat.MessageContext {
 		if (!this.trusted) return;
 		const userid = this.trusted;
 		const removed = [];
-		if (globalAuth.has(userid)) {
-			removed.push(globalAuth.get(userid));
+		if (usergroups[userid]) {
+			removed.push(usergroups[userid].charAt(0));
 		}
 		for (const room of Rooms.global.chatRooms) {
-			if (!room.settings.isPrivate && room.auth.isStaff(userid)) {
-				removed.push(room.auth.getDirect(userid) + room.roomid);
-				room.auth.set(userid, '+');
+			if (!room.isPrivate && room.auth && userid in room.auth && room.auth[userid] !== '+') {
+				removed.push(room.auth[userid] + room.id);
+				room.auth[userid] = '+';
 			}
 		}
 		this.trusted = '';
-		globalAuth.set(userid, Users.Auth.defaultSymbol());
+		this.setGroup(Config.groupsranking[0]);
 		return removed;
 	}
 	markDisconnected() {
@@ -1083,7 +1246,7 @@ export class User extends Chat.MessageContext {
 		this.lastDisconnected = Date.now();
 		if (!this.registered) {
 			// for "safety"
-			this.group = Users.Auth.defaultSymbol();
+			this.group = Config.groupsranking[0];
 			this.isSysop = false; // should never happen
 			this.isStaff = false;
 			// This isn't strictly necessary since we don't reuse User objects
@@ -1094,17 +1257,25 @@ export class User extends Chat.MessageContext {
 		// NOTE: can't do a this.update(...) at this point because we're no longer connected.
 	}
 	onDisconnect(connection: Connection) {
+		/* our stuff */
+		if (this.named) Db.seen.set(this.userid, Date.now());
+		/*(if (Ontime[this.userid]) {
+			Db.ontime.set(this.userid, Db.ontime.get(this.userid, 0) + (Date.now() - Ontime[this.userid]));
+			delete Ontime[this.userid];
+		}*/
+		/* our stuff end */
+
 		for (const [i, connected] of this.connections.entries()) {
 			if (connected === connection) {
-				this.connections.splice(i, 1);
-				// console.log('DISCONNECT: ' + this.id);
-				if (!this.connections.length) {
+				// console.log('DISCONNECT: ' + this.userid);
+				if (this.connections.length <= 1) {
 					this.markDisconnected();
 				}
 				for (const roomid of connection.inRooms) {
-					this.leaveRoom(Rooms.get(roomid)!, connection, true);
+					this.leaveRoom(Rooms.get(roomid), connection, true);
 				}
 				--this.ips[connection.ip];
+				this.connections.splice(i, 1);
 				break;
 			}
 		}
@@ -1112,7 +1283,7 @@ export class User extends Chat.MessageContext {
 			for (const roomid of this.inRooms) {
 				// should never happen.
 				Monitor.debug(`!! room miscount: ${roomid} not left`);
-				Rooms.get(roomid)!.onLeave(this);
+				Rooms.get(roomid).onLeave(this);
 			}
 			// cleanup
 			this.inRooms.clear();
@@ -1132,20 +1303,20 @@ export class User extends Chat.MessageContext {
 		let connection = null;
 		this.markDisconnected();
 		for (let i = this.connections.length - 1; i >= 0; i--) {
-			// console.log('DESTROY: ' + this.id);
+			// console.log('DESTROY: ' + this.userid);
 			connection = this.connections[i];
 			for (const roomid of connection.inRooms) {
-				this.leaveRoom(Rooms.get(roomid)!, connection, true);
+				this.leaveRoom(Rooms.get(roomid), connection, true);
 			}
 			connection.destroy();
 		}
 		if (this.connections.length) {
 			// should never happen
-			throw new Error(`Failed to drop all connections for ${this.id}`);
+			throw new Error(`Failed to drop all connections for ${this.userid}`);
 		}
 		for (const roomid of this.inRooms) {
 			// should never happen.
-			throw new Error(`Room miscount: ${roomid} not left for ${this.id}`);
+			throw new Error(`Room miscount: ${roomid} not left for ${this.userid}`);
 		}
 		this.inRooms.clear();
 	}
@@ -1165,12 +1336,12 @@ export class User extends Chat.MessageContext {
 		return "[" + (prevNames.length ? prevNames[prevNames.length - 1] : this.name) + "]";
 	}
 	getLastId() {
-		if (this.named) return this.id;
+		if (this.named) return this.userid;
 		const prevNames = Object.keys(this.prevNames);
-		return (prevNames.length ? prevNames[prevNames.length - 1] : this.id) as ID;
+		return (prevNames.length ? prevNames[prevNames.length - 1] : this.userid) as ID;
 	}
 	async tryJoinRoom(roomid: RoomID | Room, connection: Connection) {
-		roomid = roomid && (roomid as Room).roomid ? (roomid as Room).roomid : roomid as RoomID;
+		roomid = roomid && (roomid as Room).id ? (roomid as Room).id : roomid as RoomID;
 		const room = Rooms.search(roomid);
 		if (!room && roomid.startsWith('view-')) {
 			return Chat.resolvePage(roomid, this, connection);
@@ -1194,18 +1365,18 @@ export class User extends Chat.MessageContext {
 				return false;
 			}
 		}
-		if (room.settings.isPrivate) {
+		if (room.isPrivate) {
 			if (!this.named) {
 				return Rooms.RETRY_AFTER_LOGIN;
 			}
 		}
 
-		if (!this.can('bypassall') && Punishments.isRoomBanned(this, room.roomid)) {
+		if (!this.can('bypassall') && Punishments.isRoomBanned(this, room.id)) {
 			connection.sendTo(roomid, `|noinit|joinfailed|You are banned from the room "${roomid}".`);
 			return false;
 		}
 
-		if (Rooms.aliases.get(roomid) === room.roomid) {
+		if (Rooms.aliases.get(roomid) === room.id) {
 			connection.send(`>${roomid}\n|deinit`);
 		}
 
@@ -1220,15 +1391,15 @@ export class User extends Chat.MessageContext {
 				// only join full clients, not pop-out single-room
 				// clients
 				// (...no, pop-out rooms haven't been implemented yet)
-				if (curConnection.inRooms.has('global')) {
+				if (curConnection.inRooms.has('global' as RoomID)) {
 					this.joinRoom(room, curConnection);
 				}
 			}
 			return;
 		}
-		if (!connection.inRooms.has(room.roomid)) {
-			if (!this.inRooms.has(room.roomid)) {
-				this.inRooms.add(room.roomid);
+		if (!connection.inRooms.has(room.id)) {
+			if (!this.inRooms.has(room.id)) {
+				this.inRooms.add(room.id);
 				room.onJoin(this, connection);
 			}
 			connection.joinRoom(room);
@@ -1238,21 +1409,21 @@ export class User extends Chat.MessageContext {
 	leaveRoom(
 		room: Room | string,
 		connection: Connection | null = null,
-		force = false
+		force: boolean = false
 	) {
-		room = Rooms.get(room)!;
-		if (room.roomid === 'global') {
+		room = Rooms.get(room);
+		if (room.id === 'global') {
 			// you can't leave the global room except while disconnecting
 			if (!force) return false;
 			this.cancelReady();
 		}
-		if (!this.inRooms.has(room.roomid)) {
+		if (!this.inRooms.has(room.id)) {
 			return false;
 		}
 		for (const curConnection of this.connections) {
 			if (connection && curConnection !== connection) continue;
-			if (curConnection.inRooms.has(room.roomid)) {
-				curConnection.sendTo(room.roomid, `|deinit`);
+			if (curConnection.inRooms.has(room.id)) {
+				curConnection.sendTo(room.id, `|deinit`);
 				curConnection.leaveRoom(room);
 			}
 			if (connection) break;
@@ -1261,18 +1432,18 @@ export class User extends Chat.MessageContext {
 		let stillInRoom = false;
 		if (connection) {
 			// @ts-ignore TypeScript inferring wrong type for room
-			stillInRoom = this.connections.some(conn => conn.inRooms.has(room.roomid));
+			stillInRoom = this.connections.some(conn => conn.inRooms.has(room.id));
 		}
 		if (!stillInRoom) {
 			room.onLeave(this);
-			this.inRooms.delete(room.roomid);
+			this.inRooms.delete(room.id);
 		}
 	}
 
 	cancelReady() {
 		// setting variables because this can't be short-circuited
 		const searchesCancelled = Ladders.cancelSearches(this);
-		const challengesCancelled = Ladders.clearChallenges(this.id);
+		const challengesCancelled = Ladders.clearChallenges(this.userid);
 		if (searchesCancelled || challengesCancelled) {
 			this.popup(`Your searches and challenges have been cancelled because you changed your username.`);
 		}
@@ -1307,21 +1478,21 @@ export class User extends Chat.MessageContext {
 			return false; // but end the loop here
 		}
 
-		const throttleDelay = this.trusted ? THROTTLE_DELAY_TRUSTED : THROTTLE_DELAY;
+		let throttleDelay = THROTTLE_DELAY;
+		if (this.group !== ' ') throttleDelay /= 2;
 
 		if (this.chatQueueTimeout) {
 			if (!this.chatQueue) this.chatQueue = []; // this should never happen
 			if (this.chatQueue.length >= THROTTLE_BUFFER_LIMIT - 1) {
-				connection.sendTo(
-					room,
-					`|raw|<strong class="message-throttle-notice">Your message was not sent because you've been typing too quickly.</strong>`
+				connection.sendTo(room, `|raw|` +
+					`<strong class="message-throttle-notice">Your message was not sent because you've been typing too quickly.</strong>`
 				);
 				return false;
 			} else {
-				this.chatQueue.push([message, room.roomid, connection]);
+				this.chatQueue.push([message, room.id, connection]);
 			}
 		} else if (now < this.lastChatMessage + throttleDelay) {
-			this.chatQueue = [[message, room.roomid, connection]];
+			this.chatQueue = [[message, room.id, connection]];
 			this.startChatQueue(throttleDelay - (now - this.lastChatMessage));
 		} else {
 			this.lastChatMessage = now;
@@ -1332,7 +1503,7 @@ export class User extends Chat.MessageContext {
 	}
 	startChatQueue(delay: number | null = null) {
 		if (delay === null) {
-			delay = (this.trusted ? THROTTLE_DELAY_TRUSTED : THROTTLE_DELAY) - (Date.now() - this.lastChatMessage);
+			delay = (this.group !== ' ' ? THROTTLE_DELAY / 2 : THROTTLE_DELAY) - (Date.now() - this.lastChatMessage);
 		}
 
 		this.chatQueueTimeout = setTimeout(
@@ -1374,10 +1545,12 @@ export class User extends Chat.MessageContext {
 			// room is expired, do nothing
 		}
 
-		const throttleDelay = this.trusted ? THROTTLE_DELAY_TRUSTED : THROTTLE_DELAY;
+		let throttleDelay = THROTTLE_DELAY;
+		if (this.group !== ' ') throttleDelay /= 2;
 
 		if (this.chatQueue.length) {
-			this.chatQueueTimeout = setTimeout(() => this.processChatQueue(), throttleDelay);
+			this.chatQueueTimeout = setTimeout(
+				() => this.processChatQueue(), throttleDelay);
 		} else {
 			this.chatQueue = null;
 		}
@@ -1399,34 +1572,35 @@ export class User extends Chat.MessageContext {
 		this.updateIdentity();
 	}
 	getAccountStatusString() {
-		return this.trusted === this.id ? `[trusted]` :
-			this.autoconfirmed === this.id ? `[ac]` :
-			this.registered ? `[registered]` :
-			``;
+		return this.trusted === this.userid ? `[trusted]`
+			: this.autoconfirmed === this.userid ? `[ac]`
+			: this.registered ? `[registered]`
+			: `[unregistered]`;
 	}
 	destroy() {
 		// deallocate user
 		for (const roomid of this.games) {
 			const room = Rooms.get(roomid);
 			if (!room) {
-				Monitor.warn(`while deallocating, room ${roomid} did not exist for ${this.id} in rooms ${[...this.inRooms]} and games ${[...this.games]}`);
+				Monitor.warn(`while deallocating, room ${roomid} did not exist for ${this.userid} in rooms ${[...this.inRooms]} and games ${[...this.games]}`);
 				this.games.delete(roomid);
 				continue;
 			}
 			const game = room.game;
 			if (!game) {
-				Monitor.warn(`while deallocating, room ${roomid} did not have a game for ${this.id} in rooms ${[...this.inRooms]} and games ${[...this.games]}`);
+				Monitor.warn(`while deallocating, room ${roomid} did not have a game for ${this.userid} in rooms ${[...this.inRooms]} and games ${[...this.games]}`);
 				this.games.delete(roomid);
 				continue;
 			}
 			if (game.ended) continue;
+			// @ts-ignore
 			if (game.forfeit) game.forfeit(this);
 		}
 		this.clearChatQueue();
 		Users.delete(this);
 	}
 	toString() {
-		return this.id;
+		return this.userid;
 	}
 }
 
@@ -1437,18 +1611,16 @@ export class User extends Chat.MessageContext {
 function pruneInactive(threshold: number) {
 	const now = Date.now();
 	for (const user of users.values()) {
-		if (user.statusType === 'online') {
-			// check if we should set status to idle
-			const awayTimer = user.can('lock') ? STAFF_IDLE_TIMER : IDLE_TIMER;
-			const bypass = !user.can('bypassall') && (
-				user.can('bypassafktimer') ||
-				Array.from(user.inRooms).some(room => user.can('bypassafktimer', null, Rooms.get(room)!))
-			);
-			if (!bypass && !user.connections.some(connection => now - connection.lastActiveTime < awayTimer)) {
-				user.setStatusType('idle');
-			}
+		const awayTimer = user.can('lock') ? STAFF_IDLE_TIMER : IDLE_TIMER;
+		const bypass = user.statusType !== 'online' ||
+			(!user.can('bypassall') &&
+				(user.can('bypassafktimer') ||
+				Array.from(user.inRooms).some(room => user.can('bypassafktimer', null, Rooms.get(room) as BasicChatRoom))));
+		if (!bypass && !user.connections.some(connection => now - connection.lastActiveTime < awayTimer)) {
+			user.setStatusType('idle');
 		}
-		if (!user.connected && (now - user.lastDisconnected) > threshold) {
+		if (user.connected) continue;
+		if ((now - user.lastDisconnected) > threshold) {
 			user.destroy();
 		}
 	}
@@ -1467,9 +1639,9 @@ function logGhostConnections(threshold: number): Promise<unknown> {
 			buffer.push(log);
 		}
 	}
-	return buffer.length ?
-		FS(`logs/ghosts-${process.pid}.log`).append(buffer.join('\r\n') + '\r\n') :
-		Promise.resolve();
+	return buffer.length
+		? FS(`logs/ghosts-${process.pid}.log`).append(buffer.join('\r\n') + '\r\n')
+		: Promise.resolve();
 }
 
 /*********************************************************
@@ -1477,7 +1649,7 @@ function logGhostConnections(threshold: number): Promise<unknown> {
  *********************************************************/
 
 function socketConnect(
-	worker: StreamWorker,
+	worker: Worker,
 	workerid: number,
 	socketid: string,
 	ip: string,
@@ -1493,12 +1665,14 @@ function socketConnect(
 	}
 	// Emergency mode connections logging
 	if (Config.emergency) {
-		void FS('logs/cons.emergency.log').append('[' + ip + ']\n');
+		// tslint:disable-next-line:no-floating-promises
+		FS('logs/cons.emergency.log').append('[' + ip + ']\n');
 	}
 
 	const user = new User(connection);
 	connection.user = user;
-	void Punishments.checkIp(user, connection);
+	// tslint:disable-next-line: no-floating-promises
+	Punishments.checkIp(user, connection);
 	// Generate 1024-bit challenge string.
 	require('crypto').randomBytes(128, (err: Error | null, buffer: Buffer) => {
 		if (err) {
@@ -1516,23 +1690,16 @@ function socketConnect(
 		}
 	});
 
-	user.joinRoom('global', connection);
+	user.joinRoom('global' as RoomID, connection);
 }
-function socketDisconnect(worker: StreamWorker, workerid: number, socketid: string) {
+function socketDisconnect(worker: Worker, workerid: number, socketid: string) {
 	const id = '' + workerid + '-' + socketid;
 
 	const connection = connections.get(id);
 	if (!connection) return;
 	connection.onDisconnect();
 }
-function socketDisconnectAll(worker: StreamWorker, workerid: number) {
-	for (const connection of connections.values()) {
-		if (connection.worker === worker) {
-			connection.onDisconnect();
-		}
-	}
-}
-function socketReceive(worker: StreamWorker, workerid: number, socketid: string, message: string) {
+function socketReceive(worker: Worker, workerid: number, socketid: string, message: string) {
 	const id = `${workerid}-${socketid}`;
 
 	const connection = connections.get(id);
@@ -1547,18 +1714,15 @@ function socketReceive(worker: StreamWorker, workerid: number, socketid: string,
 	// drop legacy JSON messages
 	if (message.charAt(0) === '{') return;
 
+	// drop invalid messages without a pipe character
 	const pipeIndex = message.indexOf('|');
-	if (pipeIndex < 0) {
-		// drop invalid messages without a pipe character
-		connection.popup(`Invalid message; messages should be in the format \`ROOMID|MESSAGE\`. See https://github.com/smogon/pokemon-showdown/blob/master/PROTOCOL.md`);
-		return;
-	}
+	if (pipeIndex < 0) return;
 
 	const user = connection.user;
 	if (!user) return;
 
 	// The client obviates the room id when sending messages to Lobby by default
-	const roomId = message.substr(0, pipeIndex) || (Rooms.lobby || Rooms.global).roomid;
+	const roomId = message.substr(0, pipeIndex) || (Rooms.lobby || Rooms.global).id;
 	message = message.slice(pipeIndex + 1);
 
 	const room = Rooms.get(roomId);
@@ -1571,15 +1735,16 @@ function socketReceive(worker: StreamWorker, workerid: number, socketid: string,
 
 	const lines = message.split('\n');
 	if (!lines[lines.length - 1]) lines.pop();
-	const maxLineCount = (user.isStaff || room.auth.isStaff(user.id)) ?
-		THROTTLE_MULTILINE_WARN_STAFF : THROTTLE_MULTILINE_WARN;
-	if (lines.length > maxLineCount) {
+	if (lines.length > (user.isStaff ||
+		(room.auth && room.auth[user.userid] && room.auth[user.userid] !== '+') ? THROTTLE_MULTILINE_WARN_STAFF
+			: THROTTLE_MULTILINE_WARN)) {
 		connection.popup(`You're sending too many lines at once. Try using a paste service like [[Pastebin]].`);
 		return;
 	}
 	// Emergency logging
 	if (Config.emergency) {
-		void FS('logs/emergency.log').append(`[${user} (${connection.ip})] ${roomId}|${message}\n`);
+		// tslint:disable-next-line:no-floating-promises
+		FS('logs/emergency.log').append(`[${user} (${connection.ip})] ${roomId}|${message}\n`);
 	}
 
 	const startTime = Date.now();
@@ -1606,25 +1771,26 @@ export const Users = {
 	get: getUser,
 	getExact: getExactUser,
 	findUsers,
-	Auth,
-	globalAuth,
+	usergroups,
+	setOfflineGroup,
 	isUsernameKnown,
 	isTrusted,
+	importUsergroups,
+	cacheGroupData,
 	PLAYER_SYMBOL,
 	HOST_SYMBOL,
 	connections,
 	User,
 	Connection,
 	socketDisconnect,
-	socketDisconnectAll,
 	socketReceive,
 	pruneInactive,
 	pruneInactiveTimer: setInterval(() => {
 		pruneInactive(Config.inactiveuserthreshold || 60 * MINUTES);
 	}, 30 * MINUTES),
 	logGhostConnections,
-	logGhostConnectionsTimer: setInterval(() => {
-		void logGhostConnections(7 * 24 * 60 * MINUTES);
+	logGhostConnectionsTimer: setInterval(async () => {
+		await logGhostConnections(7 * 24 * 60 * MINUTES);
 	}, 7 * 24 * 60 * MINUTES),
 	socketConnect,
 };

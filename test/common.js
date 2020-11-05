@@ -1,11 +1,19 @@
 'use strict';
 
-const assert = require('assert').strict;
+const assert = require('assert');
+const Dex = require('./../.sim-dist/dex').Dex;
 const Sim = require('./../.sim-dist');
-const Dex = Sim.Dex;
 
 const cache = new Map();
-const formatsCache = new Map();
+
+const RULE_FLAGS = {
+	pokemon: 1,
+	legality: 2,
+	preview: 4,
+	sleepClause: 8,
+	cancel: 16,
+	endlessBattleClause: 32,
+};
 
 function capitalize(word) {
 	return word.charAt(0).toUpperCase() + word.slice(1);
@@ -17,22 +25,29 @@ function capitalize(word) {
 const DEFAULT_SEED = [0x09917, 0x06924, 0x0e1c8, 0x06af0];
 
 class TestTools {
-	constructor(mod = 'base') {
-		this.currentMod = mod;
+	constructor(options) {
+		if (!options) options = {};
+
+		const mod = options.mod || 'base';
+		this.baseFormat = options.baseFormat || {effectType: 'Format', mod: mod};
 		this.dex = Dex.mod(mod);
 
-		this.modPrefix = this.dex.isBase ? `[gen8] ` : `[${mod}] `;
+		this.modPrefix = this.baseFormat.name ? `[${this.baseFormat.name}]` : '';
+		if (!this.modPrefix && !this.dex.isBase) {
+			this.modPrefix = (/^gen\d$/.test(mod) ? `[Gen ${this.dex.gen}]` : `[${mod}]`);
+		}
+
+		// Handle caches
+		this.formats = new Map([['singles', new Map()], ['doubles', new Map()], ['triples', new Map()]]);
+		cache.set(this.baseFormat.id || mod, this);
 	}
 
 	mod(mod) {
 		if (cache.has(mod)) return cache.get(mod);
-
-		if (typeof mod !== 'string') throw new Error("This only supports strings");
-		if (!Dex.dexes[mod]) throw new Error(`Mod ${mod} does not exist`);
-
-		const moddedTestTools = new TestTools(mod);
-		cache.set(mod, moddedTestTools);
-		return moddedTestTools;
+		if (Dex.dexes[mod]) return new TestTools({mod: mod});
+		const baseFormat = Dex.getFormat(mod);
+		if (baseFormat.effectType === 'Format') return new TestTools({mod: baseFormat.mod, baseFormat});
+		throw new Error(`Mod ${mod} does not exist`);
 	}
 
 	gen(genNum) {
@@ -40,31 +55,39 @@ class TestTools {
 	}
 
 	getFormat(options) {
-		if (options.formatid) return Dex.getFormat(options.formatid);
-
+		let mask = 0;
+		for (let property in options) {
+			if (property === 'gameType' || !options[property]) continue;
+			mask |= RULE_FLAGS[property];
+		}
 		const gameType = Dex.getId(options.gameType || 'singles');
-		const customRules = [
-			options.pokemon && '-Nonexistent',
-			options.legality && 'Obtainable',
-			!options.preview && '!Team Preview',
-			options.sleepClause && 'Sleep Clause Mod',
-			!options.cancel && '!Cancel Mod',
-			options.endlessBattleClause && 'Endless Battle Clause',
-			options.inverseMod && 'Inverse Mod',
-		].filter(Boolean);
-		const customRulesID = customRules.length ? `@@@${customRules.join(',')}` : ``;
+		if (this.formats.get(gameType).has(mask)) return this.formats.get(gameType).get(mask);
 
-		const basicFormat = this.currentMod === 'base' && gameType === 'singles' ? 'Anything Goes' : 'Custom Game';
-		const gameTypePrefix = gameType === 'singles' ? '' : capitalize(gameType) + ' ';
-		const formatName = `${this.modPrefix}${gameTypePrefix}${basicFormat}${customRulesID}`;
+		const gameTypePrefix = gameType === 'singles' ? '' : capitalize(gameType);
+		const formatName = [this.modPrefix, gameTypePrefix, "Custom Game", '' + mask].filter(part => part).join(" ");
+		const formatId = Dex.getId(formatName);
 
-		let format = formatsCache.get(formatName);
-		if (format) return format;
+		const format = Object.assign(Object.assign({}, this.baseFormat), {
+			id: formatId,
+			name: formatName,
 
-		format = Dex.getFormat(formatName);
-		if (!format.exists) throw new Error(`Unidentified format: ${formatName}`);
+			mask: mask,
+			gameType: options.gameType || 'singles',
+			isCustomGameFormat: true,
 
-		formatsCache.set(formatName, format);
+			rated: false,
+		});
+		if (!format.ruleset) format.ruleset = [];
+		if (!format.banlist) format.banlist = [];
+
+		if (options.pokemon) format.ruleset.push('Pokemon');
+		if (options.legality) format.banlist.push('Illegal', 'Unreleased');
+		if (options.preview) format.ruleset.push('Team Preview');
+		if (options.sleepClause) format.ruleset.push('Sleep Clause Mod');
+		if (options.cancel) format.ruleset.push('Cancel Mod');
+		if (options.endlessBattleClause) format.ruleset.push('Endless Battle Clause');
+
+		this.dex.installFormat(formatId, format);
 		return format;
 	}
 
@@ -84,7 +107,7 @@ class TestTools {
 		const format = this.getFormat(options);
 
 		const battleOptions = {
-			format: format,
+			formatid: format.id,
 			// If a seed for the pseudo-random number generator is not provided,
 			// a default seed (guaranteed to be the same across test executions)
 			// will be used.
@@ -106,4 +129,4 @@ class TestTools {
 
 const common = exports = module.exports = new TestTools();
 cache.set('base', common);
-cache.set('gen8', common);
+cache.set('gen7', common);

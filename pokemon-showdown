@@ -38,7 +38,7 @@ if (!process.argv[2] || /^[0-9]+$/.test(process.argv[2])) {
 	// $ ./pokemon-showdown 9000
 
 	if (!built) build();
-	require('module')._load('./.server-dist', module, true);
+	require('module')._load('./server', module, true);
 } else switch (process.argv[2]) {
 	case 'help':
 	case 'h':
@@ -46,7 +46,7 @@ if (!process.argv[2] || /^[0-9]+$/.test(process.argv[2])) {
 	case '-h':
 	case '--help':
 	case '-?':
-		console.log('pokemon-showdown start [--skip-build] [PORT]');
+		console.log('pokemon-showdown start [PORT]');
 		console.log('');
 		console.log('  Starts a PS server on the specified port');
 		console.log('  (Defaults to the port setting in config/config.js)');
@@ -85,13 +85,9 @@ if (!process.argv[2] || /^[0-9]+$/.test(process.argv[2])) {
 		break;
 	case 'start':
 		{
-			process.argv.splice(2, 1);
-			if (process.argv[2] === '--skip-build') {
-				process.argv.splice(2, 1);
-				built = true;
-			}
+			process.argv[2] = process.argv[3];
 			if (!built) build();
-			require('module')._load('./.server-dist', module, true);
+			require('module')._load('./server', module, true);
 			break;
 		}
 	case 'generate-team':
@@ -105,7 +101,6 @@ if (!process.argv[2] || /^[0-9]+$/.test(process.argv[2])) {
 	case 'validate-team':
 		{
 			var Dex = require('./.sim-dist/dex').Dex;
-			global.toID = Dex.getId;
 			var TeamValidator = require('./.sim-dist/team-validator').TeamValidator;
 			var validator = TeamValidator.get(process.argv[3]);
 			var Streams = require('./.lib-dist/streams');
@@ -134,11 +129,8 @@ if (!process.argv[2] || /^[0-9]+$/.test(process.argv[2])) {
 			var stdin = new Streams.ReadStream(process.stdin);
 			var stdout = new Streams.WriteStream(process.stdout);
 
-			var args = (process.argv[3] || '').split(' ');
-
 			var battleStream = new BattleTextStream({
-				debug: args.includes('--debug') || args.includes('-D') || args.includes('-DR') || args.includes('-RD'),
-				replay: args.includes('--replay') || args.includes('-R') || args.includes('-DR') || args.includes('-RD')
+				debug: process.argv[3] === '--debug'
 			});
 			battleStream.start();
 			stdin.pipeTo(battleStream);

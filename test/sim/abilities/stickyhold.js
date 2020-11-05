@@ -21,7 +21,7 @@ describe('Sticky Hold', function () {
 		]});
 		const itemHolder = battle.p1.active[0];
 		battle.makeChoices('move recover', 'move grassknot');
-		assert.equal(itemHolder.item, 'razzberry', "Shuckle should hold a Razz Berry");
+		assert.strictEqual(itemHolder.item, 'razzberry', "Shuckle should hold a Razz Berry");
 		battle.makeChoices('move recover', 'switch 2');
 
 		for (const moveid of STEAL_MOVES) {

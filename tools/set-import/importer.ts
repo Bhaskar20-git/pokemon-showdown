@@ -3,24 +3,26 @@ import * as https from 'https';
 import * as url from 'url';
 import * as util from 'util';
 
+// tslint:disable: no-implicit-dependencies
+// @ts-ignore - index.js installs these for us
+import JSON5 = require('json5');
 import * as smogon from 'smogon';
 
 import * as Streams from '../../lib/streams';
 import {Dex} from '../../sim/dex';
-import {Species} from '../../sim/dex-data';
 import {TeamValidator} from '../../sim/team-validator';
 Dex.includeModData();
 const toID = Dex.getId;
 
 type DeepPartial<T> = {
 	[P in keyof T]?: T[P] extends (infer I)[]
-		? (DeepPartial<I>)[]
-		: DeepPartial<T[P]>;
+	? (DeepPartial<I>)[]
+	: DeepPartial<T[P]>;
 };
 
 interface PokemonSets {
 	[speciesid: string]: {
-		[name: string]: DeepPartial<PokemonSet>,
+		[name: string]: DeepPartial<PokemonSet>;
 	};
 }
 
@@ -39,39 +41,61 @@ interface FormatData {
 	[source: string]: PokemonSets;
 }
 
-type GenerationNum = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+type Generation = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 // The tiers we support, ie. ones that we have data sources for.
 export const TIERS = new Set([
-	'ubers', 'ou', 'uu', 'ru', 'nu', 'pu', 'zu', 'lc', 'cap', 'nationaldex',
-	'doublesou', 'battlespotsingles', 'battlespotdoubles', 'battlestadiumsingles',
-	'vgc2016', 'vgc2017', 'vgc2018', 'vgc2019ultraseries', 'vgc2020', '1v1',
-	'anythinggoes', 'nationaldexag', 'balancedhackmons', 'letsgoou', 'monotype',
+	'ubers', 'ou', 'uu', 'ru', 'nu', 'pu', 'zu', 'lc', 'cap',
+	'doublesou', 'battlespotsingles', 'battlespotdoubles',
+	'vgc2016', 'vgc2017', 'vgc2018', 'vgc2019ultraseries', '1v1',
+	'anythinggoes', 'balancedhackmons', 'letsgoou', 'monotype',
 ]);
-const FORMATS = new Map<ID, {gen: GenerationNum, format: Format}>();
+const FORMATS = new Map<ID, {gen: Generation, format: Format}>();
 const VALIDATORS = new Map<ID, TeamValidator>();
-for (let gen = 1; gen <= 8; gen++) {
+for (let gen = 1; gen <= 7; gen++) {
 	for (const tier of TIERS) {
 		const format = Dex.getFormat(`gen${gen}${tier}`);
 		if (format.exists) {
-			FORMATS.set(format.id, {gen: gen as GenerationNum, format});
+			FORMATS.set(format.id, {gen: gen as Generation, format});
 			VALIDATORS.set(format.id, new TeamValidator(format));
 		}
 	}
 }
 
+const THIRD_PARTY_SOURCES: {[source: string]: {url: string, files: {[formatid: string]: string}}} = {
+	'damagecalc.trainertower.com': {
+		url: 'https://raw.githubusercontent.com/jake-white/VGC-Damage-Calculator/gh-pages/script_res/',
+		files: {
+			gen6vgc2016: 'setdex_nuggetBridge.js',
+			gen7vgc2017: 'setdex_tt2017.js',
+			gen7vgc2018: 'setdex_tt2018.js',
+			gen7vgc2019ultraseries: 'setdex_tt2019.js',
+		},
+	},
+	'cantsay.github.io': {
+		url: 'https://raw.githubusercontent.com/cantsay/cantsay.github.io/master/_scripts/',
+		files: {
+			gen7lgpeou: 'setdex_LG_sets.js',
+			gen7bssfactory: 'setdex_factory_sets.js',
+			gen5battlespotsingles: 'setdex_gen5_sets.js',
+			gen6battlespotsingles: 'setdex_gen6_sets.js',
+			gen7battlespotsingles: 'setdex_gen7_sets.js',
+		},
+	},
+};
+
 export async function importAll() {
 	const index = await request(smogon.Statistics.URL);
 
 	const imports = [];
-	for (let gen = 1; gen <= 8; gen++) {
-		imports.push(importGen(gen as GenerationNum, index));
+	for (let gen = 1; gen <= 7; gen++) {
+		imports.push(importGen(gen as Generation, index));
 	}
 
 	return Promise.all(imports);
 }
 
-async function importGen(gen: GenerationNum, index: string) {
+async function importGen(gen: Generation, index: string) {
 	const data: GenerationData = {};
 
 	const smogonSetsByFormat: {[formatid: string]: PokemonSets} = {};
@@ -82,9 +106,11 @@ async function importGen(gen: GenerationNum, index: string) {
 	const dex = Dex.forFormat(`gen${gen}ou`);
 	for (const id in dex.data.Pokedex) {
 		if (!eligible(dex, id as ID)) continue;
-		const species = dex.getSpecies(id);
-		if (species.battleOnly) continue;// Smogon collapses these into their out of battle species
-		imports.push(importSmogonSets(dex.getSpecies(id).name, gen, smogonSetsByFormat, numByFormat));
+		imports.push(importSmogonSets(dex.getTemplate(id).name, gen, smogonSetsByFormat, numByFormat));
+	}
+	for (const source in THIRD_PARTY_SOURCES) {
+		thirdPartySetsByFormat[source] =
+			await importThirdPartySets(gen, source, THIRD_PARTY_SOURCES[source]);
 	}
 	await Promise.all(imports);
 
@@ -93,8 +119,8 @@ async function importGen(gen: GenerationNum, index: string) {
 
 		if (smogonSetsByFormat[format.id] && Object.keys(smogonSetsByFormat[format.id]).length) {
 			data[format.id] = {};
-			data[format.id]['dex'] = smogonSetsByFormat[format.id];
-			report(format, numByFormat[format.id], 'dex');
+			data[format.id]['smogon.com/dex'] = smogonSetsByFormat[format.id];
+			report(format, numByFormat[format.id], 'smogon.com/dex');
 		}
 
 		for (const source in thirdPartySetsByFormat) {
@@ -104,18 +130,17 @@ async function importGen(gen: GenerationNum, index: string) {
 			}
 		}
 
-		const stats = await getStatisticsURL(index, format);
-		if (!stats) continue;
+		const u = getStatisticsURL(index, format);
 		try {
-			const statistics = smogon.Statistics.process(await request(stats.url));
-			const sets = importUsageBasedSets(gen, format, statistics, stats.count);
+			const statistics = smogon.Statistics.parse(await request(u));
+			const sets = await importUsageBasedSets(gen, format, statistics);
 			if (Object.keys(sets).length) {
 				data[format.id] = data[format.id] || {};
-				data[format.id]['stats'] = sets;
+				data[format.id]['smogon.com/stats'] = sets;
 			}
 			data[format.id] = data[format.id] || {};
 		} catch (err) {
-			error(`${stats.url} = ${err}`);
+			error(`${u} = ${err}`);
 		}
 	}
 
@@ -126,30 +151,29 @@ function eligible(dex: ModdedDex, id: ID) {
 	const gen = toGen(dex, id);
 	if (!gen || gen > dex.gen) return false;
 
-	const species = dex.getSpecies(id);
-	if (['Mega', 'Primal', 'Ultra'].some(f => species.forme.startsWith(f))) return true;
+	const template = dex.getTemplate(id);
+	if (['Mega', 'Primal', 'Ultra'].some(f => template.forme.startsWith(f))) return true;
 
 	// Species with formes distinct enough to merit inclusion
 	const unique = ['darmanitan', 'meloetta', 'greninja', 'zygarde'];
 	// Too similar to their base forme/species to matter
-	const similar = ['pichu', 'pikachu', 'genesect', 'basculin', 'magearna', 'keldeo', 'vivillon'];
+	const similar = ['pichu', 'pikachu', 'genesect', 'basculin', 'magearna', 'keldeo',  'vivillon'];
 
-	if (species.battleOnly && !unique.some(f => id.startsWith(f))) return false;
+	if (template.battleOnly && !unique.some(f => id.startsWith(f))) return false;
 
 	// Most of these don't have analyses
-	const capNFE = species.isNonstandard === 'CAP' && species.nfe;
+	const capNFE = template.isNonstandard === 'CAP' && template.nfe;
 
 	return !id.endsWith('totem') && !capNFE && !similar.some(f => id.startsWith(f) && id !== f);
 }
 
 // TODO: Fix dex data such that CAP mons have a correct gen set
-function toGen(dex: ModdedDex, name: string): GenerationNum | undefined {
-	const pokemon = dex.getSpecies(name);
+function toGen(dex: ModdedDex, name: string): Generation | undefined {
+	const pokemon = dex.getTemplate(name);
 	if (pokemon.isNonstandard === 'LGPE') return 7;
 	if (!pokemon.exists || (pokemon.isNonstandard && pokemon.isNonstandard !== 'CAP')) return undefined;
 
 	const n = pokemon.num;
-	if (n > 810) return 8;
 	if (n > 721 || (n <= -23 && n >= -28) || (n <= -120 && n >= -126)) return 7;
 	if (n > 649 || (n <= -8 && n >= -22) || (n <= -106 && n >= -110)) return 6;
 	if (n > 493 || (n <= -12 && n >= -17) || (n <= -111 && n >= -115)) return 5;
@@ -161,7 +185,7 @@ function toGen(dex: ModdedDex, name: string): GenerationNum | undefined {
 
 async function importSmogonSets(
 	pokemon: string,
-	gen: GenerationNum,
+	gen: Generation,
 	setsByFormat: {[format: string]: PokemonSets},
 	numByFormat: {[format: string]: number}
 ) {
@@ -176,35 +200,20 @@ async function importSmogonSets(
 			setsByFormat[format.id] = setsForPokemon;
 		}
 
-		let baseSpecies = dex.getSpecies(pokemon);
-		if (baseSpecies.baseSpecies !== baseSpecies.name) baseSpecies = dex.getSpecies(baseSpecies.baseSpecies);
-		const battleOnlyFormes: Species[] = [];
-		if (baseSpecies.otherFormes) {
-			for (const forme of baseSpecies.otherFormes) {
-				const formeSpecies = dex.getSpecies(forme);
-				if (formeSpecies.battleOnly && eligible(dex, toID(formeSpecies))) {
-					battleOnlyFormes.push(formeSpecies);
-				}
-			}
-		}
-
 		for (const analysis of analyses) {
 			for (const moveset of analysis.movesets) {
 				const set = movesetToPokemonSet(dex, format, pokemon, moveset);
 				const name = cleanName(moveset.name);
-				addSmogonSet(dex, format, pokemon, name, set, setsForPokemon, numByFormat);
-				for (const battleOnlyForme of battleOnlyFormes) {
-					// Note: this is just a shallow copy which is fine because we're just modifying the ability
-					const s = Object.assign({}, set);
-					if (!format.id.includes('balancedhackmons')) s.ability = battleOnlyForme.abilities[0];
-					if (typeof battleOnlyForme.battleOnly !== 'string') {
-						if (!battleOnlyForme.battleOnly!.includes(pokemon)) continue;
-						const species = dex.getSpecies(pokemon);
-						const disambiguated = `${name} - ${species.baseForme || species.forme}`;
-						addSmogonSet(dex, format, battleOnlyForme.name, disambiguated, s, setsForPokemon, numByFormat, pokemon);
-					} else if (battleOnlyForme.battleOnly === pokemon) {
-						addSmogonSet(dex, format, battleOnlyForme.name, name, s, setsForPokemon, numByFormat);
-					}
+				// Smogon redirects megas back to a base species, but because Necrozma-Ultra has two bases,
+				// Smogon chose to redirect to Necroza-Dawn-Wings. Furthermore, the same set name has been used
+				// for both base species, so we also need to add a disambiguating suffix  to avoid overwrites.
+				if (pokemon === 'Necrozma-Ultra') {
+					addSmogonSet(dex, format, pokemon, `${name} - Dawn-Wings`, set, setsForPokemon, numByFormat);
+				} else if (pokemon === 'Necrozma-Dusk-Mane') {
+					addSmogonSet(dex, format, 'Necrozma-Ultra', `${name} - Dusk-Mane`, set, setsForPokemon, numByFormat);
+					addSmogonSet(dex, format, pokemon, name, set, setsForPokemon, numByFormat);
+				} else {
+					addSmogonSet(dex, format, pokemon, name, set, setsForPokemon, numByFormat);
 				}
 			}
 		}
@@ -218,10 +227,9 @@ function addSmogonSet(
 	name: string,
 	set: DeepPartial<PokemonSet>,
 	setsForPokemon: PokemonSets,
-	numByFormat: {[format: string]: number},
-	outOfBattleSpeciesName?: string
+	numByFormat: {[format: string]: number}
 ) {
-	if (validSet('dex', dex, format, pokemon, name, set, outOfBattleSpeciesName)) {
+	if (validSet('smogon.com/dex', dex, format, pokemon, name, set)) {
 		setsForPokemon[pokemon] = setsForPokemon[pokemon] || {};
 		setsForPokemon[pokemon][name] = set;
 		numByFormat[format.id] = (numByFormat[format.id] || 0) + 1;
@@ -236,7 +244,7 @@ function movesetToPokemonSet(dex: ModdedDex, format: Format, pokemon: string, se
 	const level = getLevel(format, set.level);
 	return {
 		level: level === 100 ? undefined : level,
-		moves: set.moveslots.map(ms => ms[0]).map(s => s.type ? `${s.move} ${s.type}` : s.move),
+		moves: set.moveslots.map(ms => ms[0]),
 		ability: fixedAbility(dex, pokemon, set.abilities[0]),
 		item: set.items[0] === 'No Item' ? undefined : set.items[0],
 		nature: set.natures[0],
@@ -259,23 +267,17 @@ function toStatsTable(stats?: StatsTable, elide = 0) {
 
 function fixedAbility(dex: ModdedDex, pokemon: string, ability?: string) {
 	if (dex.gen <= 2) return undefined;
-	const species = dex.getSpecies(pokemon);
-	if (ability && !['Mega', 'Primal', 'Ultra'].some(f => species.forme.startsWith(f))) return ability;
-	return species.abilities[0];
+	const template = dex.getTemplate(pokemon);
+	if (ability && !['Mega', 'Primal', 'Ultra'].some(f => template.forme.startsWith(f))) return ability;
+	return template.abilities[0];
 }
 
 function validSet(
-	source: string,
-	dex: ModdedDex,
-	format: Format,
-	pokemon: string,
-	name: string,
-	set: DeepPartial<PokemonSet>,
-	outOfBattleSpeciesName?: string
+	source: string, dex: ModdedDex, format: Format, pokemon: string, name: string, set: DeepPartial<PokemonSet>
 ) {
 	if (skip(dex, format, pokemon, set)) return false;
 
-	const pset = toPokemonSet(dex, format, pokemon, set, outOfBattleSpeciesName);
+	const pset = toPokemonSet(dex, format, pokemon, set);
 	let invalid = VALIDATORS.get(format.id)!.validateSet(pset, {});
 	if (!invalid) return true;
 	// Correct invalidations where set is required to be shiny due to an event
@@ -304,7 +306,7 @@ function skip(dex: ModdedDex, format: Format, pokemon: string, set: DeepPartial<
 	if (pokemon === 'Kyogre-Primal' && set.item !== 'Blue Orb' && !(bh && gen === 7)) return true;
 	if (bh) return false; // Everying else is legal or will get stripped by the team validator anyway
 
-	if (dex.getSpecies(pokemon).forme.startsWith('Mega')) {
+	if (dex.getTemplate(pokemon).forme.startsWith('Mega')) {
 		if (pokemon === 'Rayquaza-Mega') {
 			return format.id.includes('ubers') || !hasMove('Dragon Ascent');
 		} else {
@@ -320,20 +322,14 @@ function skip(dex: ModdedDex, format: Format, pokemon: string, set: DeepPartial<
 	return false;
 }
 
-function toPokemonSet(
-	dex: ModdedDex,
-	format: Format,
-	pokemon: string,
-	set: DeepPartial<PokemonSet>,
-	outOfBattleSpeciesName?: string
-): PokemonSet {
+function toPokemonSet(dex: ModdedDex, format: Format, pokemon: string, set: DeepPartial<PokemonSet>): PokemonSet {
 	// To simplify things, during validation we mutate the input set to correct for HP mismatches
 	const hp = set.moves && set.moves.find(m => m.startsWith('Hidden Power'));
 	let fill = dex.gen === 2 ? 30 : 31;
 	if (hp) {
 		const type = hp.slice(13);
 		if (type && dex.getHiddenPower(fillStats(set.ivs, fill)).type !== type) {
-			if (!set.ivs || (dex.gen >= 7 && (!set.level || set.level === 100))) {
+			if (!set.ivs || (dex.gen === 7 && (!set.level || set.level === 100))) {
 				set.hpType = type;
 				fill = 31;
 			} else if (dex.gen === 2) {
@@ -358,20 +354,15 @@ function toPokemonSet(
 	// The validator wants an ability even when Gen < 3
 	copy.ability = copy.ability || 'None';
 
-	const species = dex.getSpecies(pokemon);
-	if (species.battleOnly && !format.id.includes('balancedhackmons')) {
-		if (outOfBattleSpeciesName) {
-			copy.species = outOfBattleSpeciesName;
-		} else if (typeof species.battleOnly === 'string') {
-			copy.species = species.battleOnly;
-		} else {
-			throw new Error(`Unable to disambiguate out of battle species for ${species.name} in ${format.id}`);
-		}
-		copy.ability = dex.getSpecies(copy.species).abilities[0];
+	// The validator is picky about megas having already evolved or battle only formes
+	const template = dex.getTemplate(pokemon);
+	const mega = ['Mega', 'Primal', 'Ultra'].some(f => template.forme.startsWith(f));
+	if (template.battleOnly || (mega && !format.id.includes('balancedhackmons'))) {
+		copy.species = template.baseSpecies;
+		copy.ability = dex.getTemplate(template.baseSpecies).abilities[0];
 	}
 	return copy;
 }
-
 
 function expectedHP(ivs: Partial<StatsTable>) {
 	ivs = fillStats(ivs, 31);
@@ -411,7 +402,7 @@ const getAnalysis = retrying(async (u: string) => {
 	}
 }, 3, 50);
 
-async function getAnalysesByFormat(pokemon: string, gen: GenerationNum) {
+async function getAnalysesByFormat(pokemon: string, gen: Generation) {
 	const u = smogon.Analyses.url(pokemon === 'Meowstic' ? 'Meowstic-M' : pokemon, gen);
 	try {
 		const analysesByTier = await getAnalysis(u);
@@ -442,30 +433,68 @@ function getLevel(format: Format, level = 0) {
 	return level > maxForcedLevel ? maxForcedLevel : level;
 }
 
-export async function getStatisticsURL(
-	index: string,
-	format: Format
-): Promise<{url: string, count: number} | undefined> {
-	const current = index.includes(format.id);
-	// tslint is for some reason reporting that this isn't a Promise for some reason,
-	// but breaking it out into a const seems to fix it
-	const latestPromise = smogon.Statistics.latestDate(format.id, !current);
-	const latest = await latestPromise;
-	if (!latest) return undefined;
-	return {url: smogon.Statistics.url(latest.date, format.id, current || 1500), count: latest.count};
+// Fallback information for past formats that are most likely not present in current
+// usage statistics. Should be updated based on rotational old gen ladders, see the
+// `stats` tool in this directory for updating this. The total number of battles is
+// also included to help us reason about the quality of the stats data when determining
+// a usage threshold
+const STATISTICS: {[formatid: string]: [string, number]} = {
+	gen1ubers: ['2019-06', 1162],
+	gen1uu: ['2017-12', 710],
+	gen2nu: ['2018-11', 444],
+	gen2ubers: ['2019-07', 389],
+	gen2uu: ['2016-08', 1120],
+	gen3nu: ['2016-09', 1227],
+	gen3ubers: ['2018-08', 960],
+	gen3uu: ['2016-11', 562],
+	gen4anythinggoes: ['2017-03', 442],
+	gen4doublesou: ['2017-10', 61],
+	gen4lc: ['2017-08', 45],
+	gen4nu: ['2016-10', 515],
+	gen4ubers: ['2018-09', 866],
+	gen4uu: ['2019-03', 554],
+	gen51v1: ['2019-05', 905],
+	gen5doublesou: ['2016-12', 166],
+	gen5lc: ['2018-05',  37],
+	gen5monotype: ['2018-10', 525],
+	gen5nu: ['2017-05', 43],
+	gen5ru: ['2018-01', 49],
+	gen5ubers: ['2016-03', 1666],
+	gen5uu: ['2018-04', 232],
+	gen61v1: ['2018-09', 1053],
+	gen6anythinggoes: ['2017-11', 4274],
+	gen6battlespotdoubles: ['2017-07', 40],
+	gen6battlespotsingles: ['2017-10', 78],
+	gen6cap: ['2018-01', 0],
+	gen6doublesou: ['2017-08', 829],
+	gen6lc: ['2017-07', 33],
+	gen6monotype: ['2018-01', 1],
+	gen6nu: ['2017-07', 86],
+	gen6pu: ['2017-07', 187],
+	gen6ru: ['2017-08', 38],
+	gen6ubers: ['2018-11', 2300],
+	gen6uu: ['2017-09', 563],
+	gen6vgc2016: ['2017-09', 742],
+	gen7vgc2017: ['2017-11', 180008],
+	gen7vgc2018: ['2018-08', 367649],
+};
+
+export function getStatisticsURL(index: string, format: Format) {
+	return (STATISTICS[format.id] && !index.includes(format.id)) ?
+		`${smogon.Statistics.URL}${STATISTICS[format.id][0]}/chaos/${format.id}-1500.json` :
+		smogon.Statistics.url(smogon.Statistics.latest(index), format.id);
 }
 
 // TODO: Use bigram matrix, bucketed spreads and generative validation logic for more realistic sets
-function importUsageBasedSets(gen: GenerationNum, format: Format, statistics: smogon.UsageStatistics, count: number) {
+function importUsageBasedSets(gen: Generation, format: Format, statistics: smogon.UsageStatistics) {
 	const sets: PokemonSets = {};
 	const dex = Dex.forFormat(format);
-	const threshold = getUsageThreshold(format, count);
+	const threshold = getUsageThreshold(format);
 	let num = 0;
 	for (const pokemon in statistics.data) {
 		const stats = statistics.data[pokemon];
 		if (eligible(dex, toID(pokemon)) && stats.usage >= threshold) {
 			const set: DeepPartial<PokemonSet> = {
-				level: getLevel(format),
 				moves: (top(stats.Moves, 4) as string[]).map(m => dex.getMove(m).name).filter(m => m),
 			};
 			if (gen >= 2 && format.id !== 'gen7letsgoou') {
@@ -476,7 +505,7 @@ function importUsageBasedSets(gen: GenerationNum, format: Format, statistics: sm
 			if (gen >= 3) {
 				const id = top(stats.Abilities) as string;
 				set.ability = fixedAbility(dex, pokemon, dex.getAbility(id).name);
-				const {nature, evs} = fromSpread(top(stats.Spreads) as string);
+				const { nature, evs } = fromSpread(top(stats.Spreads) as string);
 				set.nature = nature;
 				if (format.id !== 'gen7letsgoou') {
 					if (!evs || !Object.keys(evs).length) continue;
@@ -484,23 +513,26 @@ function importUsageBasedSets(gen: GenerationNum, format: Format, statistics: sm
 				}
 			}
 			const name = 'Showdown Usage';
-			if (validSet('stats', dex, format, pokemon, name, set)) {
+			if (validSet('smogon.com/stats', dex, format, pokemon, name, set)) {
 				sets[pokemon] = {};
 				sets[pokemon][name] = set;
 				num++;
 			}
 		}
 	}
-	report(format, num, 'stats');
+	report(format, num, 'smogon.com/stats');
 	return sets;
 }
 
-function getUsageThreshold(format: Format, count: number) {
+function getUsageThreshold(format: Format) {
+	const unpopular = STATISTICS[format.id];
 	// For old metagames with extremely low total battle counts we adjust the thresholds
-	if (count < 100) return Infinity;
-	if (count < 400) return 0.05;
+	if (unpopular) {
+		if (unpopular[1] < 100) return Infinity;
+		if (unpopular[1] < 400) return 0.05;
+	}
 	// These formats are deemed to have playerbases of lower quality than normal
-	return /uber|anythinggoes|doublesou/.test(format.id) ? 0.03 : 0.01;
+	return format.id.match(/uber|anythinggoes|doublesou/) ? 0.03 : 0.01;
 }
 
 const STATS: StatName[] = ['hp', 'atk', 'def', 'spa', 'spd', 'spe'];
@@ -512,7 +544,7 @@ function fromSpread(spread: string) {
 		const ev = Number(rev);
 		if (ev) evs[STATS[i]] = ev;
 	}
-	return {nature, evs};
+	return { nature, evs };
 }
 
 function top(weighted: {[key: string]: number}, n = 1): string | string[] | undefined {
@@ -529,6 +561,87 @@ function top(weighted: {[key: string]: number}, n = 1): string | string[] | unde
 		.sort((a, b) => b[1] - a[1])
 		.slice(0, n)
 		.map(x => x[0]);
+}
+
+async function importThirdPartySets(
+	gen: Generation, source: string, data: {url: string, files: {[formatid: string]: string}}
+) {
+	const setsByFormat: {[formatid: string]: PokemonSets} = {};
+	for (const formatid in data.files) {
+		const f = FORMATS.get(formatid as ID);
+		if (!f || f.gen !== gen) continue;
+		const {format} = f;
+		const dex = Dex.forFormat(format);
+
+		const file = data.files[formatid];
+		const raw = await request(`${data.url}${file}`);
+		const match = raw.match(/var.*?=.*?({.*})/s);
+		if (!match) {
+			error(`Could not find sets for ${source} in ${file}`);
+			continue;
+		}
+		// NOTE: These are not really PokemonSets until they've been fixed below
+		const json = JSON5.parse(match[1]) as PokemonSets;
+		let sets = setsByFormat[format.id];
+		if (!sets) {
+			sets = {};
+			setsByFormat[format.id] = sets;
+		}
+		let num = 0;
+		for (const mon in json) {
+			const pokemon = dex.getTemplate(mon).name;
+			if (!eligible(dex, toID(pokemon))) continue;
+
+			for (const name in json[mon]) {
+				const set = fixThirdParty(dex, pokemon, json[mon][name]);
+				if (validSet(source, dex, format, pokemon, name, set)) {
+					sets[pokemon] = sets[pokemon] || {};
+					sets[pokemon][cleanName(name)] = set;
+					num++;
+				}
+			}
+		}
+		report(format, num, source);
+	}
+	return setsByFormat;
+}
+
+function fixThirdParty(dex: ModdedDex, pokemon: string, set: DeepPartial<PokemonSet>) {
+	set.ability = fixedAbility(dex, pokemon, set.ability);
+	if (set.ivs) {
+		const ivs: Partial<StatsTable> = {};
+		let iv: StatName;
+		for (iv in set.ivs) {
+			ivs[fromShort(iv) || iv] = Number(set.ivs[iv]);
+		}
+		set.ivs = ivs;
+	}
+	if (set.evs) {
+		const evs: Partial<StatsTable> = {};
+		let ev: StatName;
+		for (ev in set.evs) {
+			evs[fromShort(ev) || ev] = Number(set.evs[ev]);
+		}
+		set.evs = evs;
+	}
+	return set;
+}
+
+function fromShort(s: string): StatName | undefined {
+	switch (s) {
+		case 'hp':
+			return 'hp';
+		case 'at':
+			return 'atk';
+		case 'df':
+			return 'def';
+		case 'sa':
+			return 'spa';
+		case 'sd':
+			return 'spd';
+		case 'sp':
+			return 'spe';
+	}
 }
 
 class RetryableError extends Error {
@@ -600,7 +713,7 @@ function throttling<I, O>(fn: (args: I) => Promise<O>, limit: number, interval: 
 	const throttled = (args: I) => {
 		let timeout: NodeJS.Timeout;
 		return new Promise<O>((resolve, reject) => {
-			const execute = () => {
+			const execute = async () => {
 				resolve(fn(args));
 				queue.delete(timeout);
 			};

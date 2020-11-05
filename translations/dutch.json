@@ -2,12 +2,6 @@
 	"name": "Dutch",
 
 	"strings": {
-		"namelocked": "genaamlockt",
-		"locked": "gelockt",
-
-		"autoconfirmed": "autoconfirmed",
-		"trusted": "vertrouwd",
-
 		"Please follow the rules:": "Volg de regels:",
 		"[TN: Link to the PS rules for your language (path after pokemonshowdown.com]/rules": "/pages/rules-nl",
 		"Global Rules": "Globale Regels",
@@ -18,7 +12,8 @@
 		"% <strong>Global Driver</strong> - The above, and they can also lock users and check for alts": "% <strong>Global Driver</strong> - Het bovenstaande en ze kunnen gebruikers locken en alternatieve accounts inzien",
 		"@ <strong>Global Moderator</strong> - The above, and they can globally ban users": "@ <strong>Global Moderator</strong> - Het bovenstaande en ze kunnen gebruikers van de server bannen",
 		"* <strong>Global Bot</strong> - Like Moderator, but makes it clear that this user is a bot": "* <strong>Global Bot</strong> - Hetzelfde als een moderator maar dit symbool maakt duidelijk dat deze gebruiker een bot is",
-		"&amp; <strong>Global Administrator</strong> -  They can do anything, like change what this message says and promote users globally": "&amp; <strong>Global Administrator</strong> - Zij kunnen alles doen, zoals veranderen wat hier staat",
+		"&amp; <strong>Global Leader</strong> - The above, and they can promote to global moderator and force ties": "&amp; <strong>Global Leader</strong> - Het bovenstaande en ze kunnen gebruikers promoten tot global moderator en gelijkspel afdwingen",
+		"~ <strong>Global Administrator</strong> -  They can do anything, like change what this message says": "~ <strong>Global Administrator</strong> - Zij kunnen alles doen, zoals veranderen wat hier staat",
 
 		"<strong>Room ranks</strong>": "<strong>Roomrangen</strong>",
 		"+ <strong>Voice</strong> - They can use ! commands like !groups": "+ <strong>Voice</strong> - Ze kunnen ! commando's gebruiken en tijdens beperkte chat praten",
@@ -38,9 +33,9 @@
 		"DATA COMMANDS": "DATA COMMANDO'S",
 		"DRIVER COMMANDS": "DRIVER COMMANDO'S",
 		"MODERATOR COMMANDS": "MODERATOR COMMANDO'S",
-		"ADMIN COMMANDS": "ADMINISTRATOR COMMANDO'S",
+		"LEADER COMMANDS": "LEADER COMMANDO'S",
 
-		"(replace / with ! to broadcast. Broadcasting requires: + % @ # &)": "(vervang / door ! om uit te zenden. Uitzenden verreist: + % @ # &)",
+		"(replace / with ! to broadcast. Broadcasting requires: + % @ # & ~)": "(vervang / door ! om uit te zenden. Uitzenden verreist: + % @ # & ~)",
 
 		"<strong>Room punishments</strong>:": "<strong>Room straffen</strong>:",
 		"<strong>warn</strong> - Displays a popup with the rules.": "<strong>waarschuwing</strong> - Laat een popup zien met de regels.",
@@ -100,35 +95,6 @@
 		"Your status contains a banned word.": "Er zit een verboden woord in je status.",
 		"Your status has been set to: ${target}.": "Je status is nu: ${target}.",
 		"You are now marked as busy.": "Je staat nu als bezig aangegeven.",
-		"You are now marked as away. Send a message or use /back to indicate you are back.": "Je staat nu als afwezig aangegeven. Stuur een bericht of gebruik /back om te laten zien dat je terug bent.",
-
-		"You must choose a name before you can talk.": "Je moet eerst een naam kiezen voordat je kunt praten.",
-		"You are ${lockType} and can't talk in chat. ${lockExpiration}": "je bent ${lockType} en kunt niet in de chat praten. ${lockExpiration}",
-		"Get help with [TN: your lock]this": "Zoek hier hulp bij",
-		"You are muted and cannot talk in this room.": "Je bent gemute en kunt niet praten in deze room.",
-		"Because moderated chat is set, your account must be at least one week old and you must have won at least one ladder game to speak in this room.": "Omdat modchat aangezet is moet je account in ieder geval een week oud zijn en moet je een laddergevecht winnen in deze room te kunnen praten.",
-		"Because moderated chat is set, your account must be staff in a public room or have a global rank to speak in this room.": "Omdat modchat aangezet is moet je account staf hebben in een openbare room of een globale rang hebben om in deze room te kunnen praten.",
-		"Because moderated chat is set, you must be of rank ${groupName} or higher to speak in this room.": "Omdat modchat aangezet is moet je in ieder geval rang ${groupName} of hoger zijn om in deze room te kunnen praten.",
-		"Your message can't be blank.": "Je bericht kan niet blanco zijn.",
-		"Your message is too long: ": "Je bericht is te lang: ",
-		"Your message contains banned characters.": "Je bericht bevat verbannen karakters.",
-		"This room has slow-chat enabled. You can only talk once every ${time} seconds.": "Deze room heeft slow-chat aangezet. Je kunt niet meer dan één keer elke ${time} seconden praten.",
-		"Your username contains a phrase banned by this room.": "Je gebruikersnaam bevat een verbannen woord uit deze room.",
-		"Your status message contains a phrase banned by this room.": "Je statusbericht bevat een verbannen woord uit deze room.",
-
-		"Your message contained banned words in this room.": "Je bericht bevat uit de room verbannen woorden.",
-		"You can't send the same message again so soon.": "Je kunt hetzelfde bericht niet zo snel nogmaals versturen.",
-		"Due to this room being a high traffic room, your message must contain at least two letters.": "Aangezien deze room een room is met veel verkeer, moet je bericht in ieder geval twee letters bevatten.",
-
-		"You are already blocking private messages! To unblock, use /unblockpms": "Je bent al privéberichten aan het blokkeren. Om deze te deblokkeren, gebruik /unblockpms",
-		"You are now blocking private messages, except from staff and ${rank}.": "Je blokkeert nu privéberichten, behalve van staf en ${rank}.",
-		"You are now blocking private messages, except from staff and ${status} users.": "Je blokkeert nu privéberichten, behalve van staf en ${status}e gebruikers.",
-		"You are now blocking private messages, except from staff.": "Je blokkeert nu privéberichten, behalve van staf.",
-		"You are not blocking private messages! To block, use /blockpms": "Je blokkeert geen privéberichten! Om deze te blokkeren, gebruik /blockpms",
-		"You are no longer blocking private messages.": "Je blokkeert geen privéberichten meer.",
-		"You are now blocking all incoming challenge requests.": "Je blokkeert nu alle inkomende uitdagingen.",
-		"You are already blocking challenges!": "Je blokkeert al uitdagingen!",
-		"You are already available for challenges!": "Je bent al beschikbaar voor uitdagingen!",
-		"You are available for challenges from now on.": "Je bent vanaf nu beschikbaar voor uitdagingen."
+		"You are now marked as away. Send a message or use /back to indicate you are back.": "Je staat nu als afwezig aangegeven. Stuur een bericht of gebruik /back om te laten zien dat je terug bent."
 	}
 }

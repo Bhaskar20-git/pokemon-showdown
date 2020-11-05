@@ -18,7 +18,7 @@ export class RandomPlayerAI extends BattlePlayer {
 	constructor(
 		playerStream: ObjectReadWriteStream<string>,
 		options: {move?: number, mega?: number, seed?: PRNG | PRNGSeed | null } = {},
-		debug = false
+		debug: boolean = false
 	) {
 		super(playerStream, debug);
 		this.move = options.move || 1.0;
@@ -44,7 +44,7 @@ export class RandomPlayerAI extends BattlePlayer {
 			const choices = request.forceSwitch.map((mustSwitch: AnyObject) => {
 				if (!mustSwitch) return `pass`;
 
-				const canSwitch = range(1, 6).filter(i => (
+				const canSwitch = [1, 2, 3, 4, 5, 6].filter(i => (
 					pokemon[i - 1] &&
 					// not active
 					i > request.forceSwitch.length &&
@@ -56,9 +56,7 @@ export class RandomPlayerAI extends BattlePlayer {
 
 				if (!canSwitch.length) return `pass`;
 				const target = this.chooseSwitch(
-					request.active,
-					canSwitch.map(slot => ({slot, pokemon: pokemon[slot - 1]}))
-				);
+					canSwitch.map(slot => ({slot, pokemon: pokemon[slot - 1]})));
 				chosen.push(target);
 				return `switch ${target}`;
 			});
@@ -66,7 +64,7 @@ export class RandomPlayerAI extends BattlePlayer {
 			this.choose(choices.join(`, `));
 		} else if (request.active) {
 			// move request
-			let [canMegaEvo, canUltraBurst, canZMove, canDynamax] = [true, true, true, true];
+			let [canMegaEvo, canUltraBurst, canZMove] = [true, true, true];
 			const pokemon = request.side.pokemon;
 			const chosen: number[] = [];
 			const choices = request.active.map((active: AnyObject, i: number) => {
@@ -75,30 +73,21 @@ export class RandomPlayerAI extends BattlePlayer {
 				canMegaEvo = canMegaEvo && active.canMegaEvo;
 				canUltraBurst = canUltraBurst && active.canUltraBurst;
 				canZMove = canZMove && !!active.canZMove;
-				canDynamax = canDynamax && !!active.canDynamax;
 
-				// Determine whether we should change form if we do end up switching
-				const change = (canMegaEvo || canUltraBurst || canDynamax) && this.prng.next() < this.mega;
-				// If we've already dynamaxed or if we're planning on potentially dynamaxing
-				// we need to use the maxMoves instead of our regular moves
-
-				const useMaxMoves = (!active.canDynamax && active.maxMoves) || (change && canDynamax);
-				const possibleMoves = useMaxMoves ? active.maxMoves.maxMoves : active.moves;
-
-				let canMove = range(1, possibleMoves.length).filter(j => (
+				let canMove = [1, 2, 3, 4].slice(0, active.moves.length).filter(j => (
 					// not disabled
-					!possibleMoves[j - 1].disabled
+					!active.moves[j - 1].disabled
 					// NOTE: we don't actually check for whether we have PP or not because the
 					// simulator will mark the move as disabled if there is zero PP and there are
 					// situations where we actually need to use a move with 0 PP (Gen 1 Wrap).
 				)).map(j => ({
 					slot: j,
-					move: possibleMoves[j - 1].move,
-					target: possibleMoves[j - 1].target,
+					move: active.moves[j - 1].move,
+					target: active.moves[j  - 1].target,
 					zMove: false,
 				}));
 				if (canZMove) {
-					canMove.push(...range(1, active.canZMove.length)
+					canMove.push(...[1, 2, 3, 4].slice(0, active.canZMove.length)
 						.filter(j => active.canZMove[j - 1])
 						.map(j => ({
 							slot: j,
@@ -110,7 +99,7 @@ export class RandomPlayerAI extends BattlePlayer {
 
 				// Filter out adjacentAlly moves if we have no allies left, unless they're our
 				// only possible move options.
-				const hasAlly = pokemon.length > 1 && !pokemon[i ^ 1].condition.endsWith(` fnt`);
+				const hasAlly = !pokemon[i ^ 1].condition.endsWith(` fnt`);
 				const filtered = canMove.filter(m => m.target !== `adjacentAlly` || hasAlly);
 				canMove = filtered.length ? filtered : canMove;
 
@@ -136,7 +125,7 @@ export class RandomPlayerAI extends BattlePlayer {
 					return {choice: move, move: m};
 				});
 
-				const canSwitch = range(1, 6).filter(j => (
+				const canSwitch = [1, 2, 3, 4, 5, 6].filter(j => (
 					pokemon[j - 1] &&
 					// not active
 					!pokemon[j - 1].active &&
@@ -149,21 +138,16 @@ export class RandomPlayerAI extends BattlePlayer {
 
 				if (switches.length && (!moves.length || this.prng.next() > this.move)) {
 					const target = this.chooseSwitch(
-						active,
-						canSwitch.map(slot => ({slot, pokemon: pokemon[slot - 1]}))
-					);
+						canSwitch.map(slot => ({slot, pokemon: pokemon[slot - 1]})));
 					chosen.push(target);
 					return `switch ${target}`;
 				} else if (moves.length) {
-					const move = this.chooseMove(active, moves);
+					const move = this.chooseMove(moves);
 					if (move.endsWith(` zmove`)) {
 						canZMove = false;
 						return move;
-					} else if (change) {
-						if (canDynamax) {
-							canDynamax = false;
-							return `${move} dynamax`;
-						} else if (canMegaEvo) {
+					} else if ((canMegaEvo || canUltraBurst) && this.prng.next() < this.mega) {
+						if (canMegaEvo) {
 							canMegaEvo = false;
 							return `${move} mega`;
 						} else {
@@ -175,8 +159,7 @@ export class RandomPlayerAI extends BattlePlayer {
 					}
 				} else {
 					throw new Error(`${this.constructor.name} unable to make choice ${i}. request='${request}',` +
-						` chosen='${chosen}', (mega=${canMegaEvo}, ultra=${canUltraBurst}, zmove=${canZMove},` +
-						` dynamax='${canDynamax}')`);
+						` chosen='${chosen}', (mega=${canMegaEvo}, ultra=${canUltraBurst}, zmove=${canZMove})`);
 				}
 			});
 			this.choose(choices.join(`, `));
@@ -190,24 +173,11 @@ export class RandomPlayerAI extends BattlePlayer {
 		return `default`;
 	}
 
-	protected chooseMove(active: AnyObject, moves: {choice: string, move: AnyObject}[]): string {
+	protected chooseMove(moves: {choice: string, move: AnyObject}[]): string {
 		return this.prng.sample(moves).choice;
 	}
 
-	protected chooseSwitch(active: AnyObject | undefined, switches: {slot: number, pokemon: AnyObject}[]): number {
+	protected chooseSwitch(switches: {slot: number, pokemon: AnyObject}[]): number {
 		return this.prng.sample(switches).slot;
 	}
-}
-
-// Creates an array of numbers progressing from start up to and including end
-function range(start: number, end?: number, step = 1) {
-	if (end === undefined) {
-		end = start;
-		start = 0;
-	}
-	const result = [];
-	for (; start <= end; start += step) {
-		result.push(start);
-	}
-	return result;
 }

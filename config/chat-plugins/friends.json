@@ -1,0 +1,11 @@
+{
+	"todorokidelta": {"friendsList":["dmbros","gtelyh","aflyingphantom","arifin","4n5h64m3r","chengu"],"pendingRequests":["pokemonismyfav"],"notifications":true,"disabledFriends":false,"ignoreList":[],"private":false},
+	"gtelyh": {"friendsList":["todorokidelta","dmbros","siddhesh1903","chengu","4n5h64m3r","hypergaburias"],"pendingRequests":["gazebot"],"notifications":true,"disabledFriends":false,"ignoreList":[],"private":false},
+	"dmbros": {"friendsList":["todorokidelta","gtelyh","siddhesh1903","4n5h64m3r","arifin"],"pendingRequests":[],"notifications":false,"disabledFriends":false,"ignoreList":[],"private":false},
+	"arifin": {"friendsList":["todorokidelta","dmbros"],"pendingRequests":[],"notifications":true,"disabledFriends":false,"ignoreList":[],"private":false},
+	"aflyingphantom": {"friendsList":["todorokidelta"],"pendingRequests":[],"notifications":true,"disabledFriends":false,"ignoreList":[],"private":false},
+	"4n5h64m3r": {"friendsList":["dmbros","gtelyh","todorokidelta"],"pendingRequests":[],"notifications":false,"disabledFriends":false,"ignoreList":[],"private":false},
+	"chengu": {"friendsList":["gtelyh","todorokidelta"],"pendingRequests":[],"notifications":true,"disabledFriends":false,"ignoreList":[],"private":false},
+	"siddhesh1903": {"friendsList":["gtelyh","dmbros"],"pendingRequests":[],"notifications":true,"disabledFriends":false,"ignoreList":[],"private":false},
+	"hypergaburias": {"friendsList":["gtelyh"],"pendingRequests":[],"notifications":true,"disabledFriends":false,"ignoreList":[],"private":false}
+}

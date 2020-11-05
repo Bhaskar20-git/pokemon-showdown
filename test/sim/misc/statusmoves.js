@@ -23,7 +23,7 @@ describe('Most status moves', function () {
 		battle.makeChoices('move gastroacid', 'move return');
 		assert.false.holdsItem(battle.p2.active[0]); // Klefki's Magician suppressed by Gastro Acid.
 		battle.makeChoices('move glare', 'switch 2'); // Dusknoir
-		assert.equal(battle.p2.active[0].status, 'par');
+		assert.strictEqual(battle.p2.active[0].status, 'par');
 		battle.makeChoices('move confuseray', 'switch 3'); // Slaking
 		assert.ok(battle.p2.active[0].volatiles['confusion']);
 		battle.makeChoices('move sandattack', 'switch 4'); // Tornadus
@@ -45,27 +45,27 @@ describe('Most status moves', function () {
 		]});
 
 		battle.makeChoices('move thunderwave', 'move charge');
-		assert.equal(battle.p2.active[0].status, '');
+		assert.strictEqual(battle.p2.active[0].status, '');
 		assert.ok(battle.log[battle.lastMoveLine + 1].startsWith('|-immune|'));
 
 		battle.makeChoices('move willowisp', 'switch 2'); // Emboar
-		assert.equal(battle.p2.active[0].status, '');
+		assert.strictEqual(battle.p2.active[0].status, '');
 		assert.ok(battle.log[battle.lastMoveLine + 1].startsWith('|-immune|'));
 
 		battle.makeChoices('move poisongas', 'switch 3'); // Muk
-		assert.equal(battle.p2.active[0].status, '');
+		assert.strictEqual(battle.p2.active[0].status, '');
 		assert.ok(battle.log[battle.lastMoveLine + 1].startsWith('|-immune|'));
 
 		battle.makeChoices('move toxic', 'move shadowsneak');
-		assert.equal(battle.p2.active[0].status, '');
+		assert.strictEqual(battle.p2.active[0].status, '');
 		assert.ok(battle.log[battle.lastMoveLine + 1].startsWith('|-immune|'));
 
 		battle.makeChoices('move poisongas', 'switch 4'); // Aron
-		assert.equal(battle.p2.active[0].status, '');
+		assert.strictEqual(battle.p2.active[0].status, '');
 		assert.ok(battle.log[battle.lastMoveLine + 1].startsWith('|-immune|'));
 
 		battle.makeChoices('move toxic', 'move magnetrise');
-		assert.equal(battle.p2.active[0].status, '');
+		assert.strictEqual(battle.p2.active[0].status, '');
 		assert.ok(battle.log[battle.lastMoveLine + 1].startsWith('|-immune|'));
 	});
 });
@@ -83,7 +83,7 @@ describe('Poison-inflicting status moves [Gen 2]', function () {
 			[{species: "Magneton", moves: ['sleeptalk']}],
 		]);
 		// Set all moves to perfect accuracy
-		battle.onEvent('Accuracy', battle.format, true);
+		battle.onEvent('Accuracy', battle.getFormat(), true);
 
 		const target = battle.p2.active[0];
 		for (const move of POISON_STATUS_MOVES) {

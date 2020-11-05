@@ -19,6 +19,6 @@ describe('U-Turn', function () {
 		]]);
 
 		battle.makeChoices('move uturn', 'move substitute');
-		assert.equal(battle.requestState, 'switch');
+		assert.strictEqual(battle.requestState, 'switch');
 	});
 });

@@ -4,18 +4,18 @@ Pokémon Showdown
 Navigation: [Website][1] | **Server repository** | [Client repository][2] | [Dex repository][3]
 
   [1]: http://pokemonshowdown.com/
-  [2]: https://github.com/smogon/pokemon-showdown-client
+  [2]: https://github.com/Zarel/Pokemon-Showdown-Client
   [3]: https://github.com/Zarel/Pokemon-Showdown-Dex
 
-[![Build Status](https://github.com/smogon/pokemon-showdown/workflows/Node.js%20CI/badge.svg)](https://github.com/smogon/pokemon-showdown/actions?query=workflow%3A%22Node.js+CI%22)
-[![Dependency Status](https://david-dm.org/zarel/Pokemon-Showdown.svg)](https://david-dm.org/zarel/Pokemon-Showdown)
-[![devDependency Status](https://david-dm.org/zarel/Pokemon-Showdown/dev-status.svg)](https://david-dm.org/zarel/Pokemon-Showdown?type=dev)
-[![Total Alerts](https://img.shields.io/lgtm/alerts/g/Zarel/Pokemon-Showdown.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/Zarel/Pokemon-Showdown/alerts)
+[![Build Status](https://api.travis-ci.com/DeathlyPlays/Spectral.svg)](https://travis-ci.com/DeathlyPlays/Spectral)
+[![Dependency Status](https://david-dm.org/deathlyplays/Spectral.svg)](https://david-dm.org/deathlyplays/Spectral)
+[![devDependency Status](https://david-dm.org/deathlyplays/Spectral/dev-status.svg)](https://david-dm.org/deathlyplays/Spectral?type=dev)
+[![Total Alerts](https://img.shields.io/lgtm/alerts/g/DeathlyPlays/Spectral.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/DeathlyPlays/Spectral/alerts)
 
 Introduction
 ------------------------------------------------------------------------
 
-This is the source code for the game server of [Pokémon Showdown][4], a website for Pokémon battling. Pokémon Showdown simulates singles, doubles and triples battles in all the games out so far (Generations 1 through 8).
+This is the source code for the game server of [Pokémon Showdown][4], a website for Pokémon battling. Pokémon Showdown simulates singles, doubles and triples battles in all the games out so far (Generations 1 through 7).
 
 This repository contains the files needed to set up your own Pokémon Showdown server. Note that to set up a server, you'll also need a server computer.
 
@@ -78,25 +78,25 @@ You will be redirected to `http://SERVER.psim.us`. The reason your server is vis
 If you truly want to host the client yourself, there is [a repository for the Pokémon Showdown Client][7]. It's not recommended for beginners, though.
 
   [6]: https://nodejs.org/
-  [7]: https://github.com/smogon/pokemon-showdown-client
+  [7]: https://github.com/Zarel/Pokemon-Showdown-Client
 
 
 Setting up an Administrator account
 ------------------------------------------------------------------------
 
-Once your server is up, you probably want to make yourself an Administrator (&) on it.
+Once your server is up, you probably want to make yourself an Administrator (~) on it.
 
 ### config/usergroups.csv
 
 To become an Administrator, create a file named `config/usergroups.csv` containing
 
-    USER,&
+    USER,~
 
-Replace `USER` with the username that you would like to become an Administrator. Do not put a space between the comma and the ampersand.
+Replace `USER` with the username that you would like to become an Administrator. Do not put a space between the comma and the tilde.
 
 This username must be registered. If you do not have a registered account, you can create one using the Register button in the settings menu (it looks like a gear) in the upper-right of Pokémon Showdown.
 
-Once you're an administrator, you can promote/demote others easily with the `/globaladmin`, `/globalmod`, `/globaldriver`, etc commands.
+Once you're an administrator, you can promote/demote others easily with the `/globaladmin`, `/globalleader`, `/globalmod`, etc commands.
 
 
 Browser support
@@ -130,7 +130,7 @@ You can also visit the [Pokémon Showdown forums][8] for discussion and help.
 
 If you'd like to contribute to programming and don't know where to start, feel free to check out [Ideas for New Developers][9].
 
-  [9]: https://github.com/smogon/pokemon-showdown/issues/2444
+  [9]: https://github.com/Zarel/Pokemon-Showdown/issues/2444
 
 
 License
@@ -138,7 +138,7 @@ License
 
 Pokémon Showdown's server is distributed under the terms of the [MIT License][10].
 
-  [10]: https://github.com/smogon/pokemon-showdown/blob/master/LICENSE
+  [10]: https://github.com/Zarel/Pokemon-Showdown/blob/master/LICENSE
 
 
 Credits
@@ -150,7 +150,7 @@ Owner
 
 Staff
 
-- Andrew Werner [HoeenHero] - Development
+- Astrid Halberkamp [bumbadadabum] - Development
 - Chris Monsanto [chaos] - Sysadmin
 - Kirk Scheibelhut [pre] - Development, Sysadmin
 - Mathieu Dias-Martins [Marty-D] - Research (game mechanics), Development
@@ -158,7 +158,6 @@ Staff
 
 Retired Staff
 
-- Astrid Halberkamp [Asheviere, bumbadadabum] - Development
 - Bill Meltsner [bmelts] - Development, Sysadmin
 - Cathy J. Fitzpatrick [cathyjf] - Development, Sysadmin
 - Hugh Gordon [V4] - Research (game mechanics), Development
@@ -167,11 +166,10 @@ Retired Staff
 
 Major Contributors
 
-- [Anubis, Lusamine] - Research (game mechanics), Sysadmin
+- Andrew Werner [HoeenHero] - Development
 - Austin Couturier [Austin] - Development (damage calculator)
 - Kevin Lau [Ascriptmaster] - Development, Art (battle animations)
 - Konrad Borowski [xfix] - Development
-- Kris Johnson [Kris] - Development
 - Leonard Craft III [DaWoblefet] - Research (game mechanics)
 - Neil Rashbrook [urkerab] - Development
 - [peach] - Development
@@ -193,6 +191,7 @@ Contributors
 - Ian Clail [Layell] - Art (battle graphics, sprites)
 - Jacob McLemore [McLemore] - Development
 - Jeremy Piemonte [panpawn] - Development
+- Kris Johnson [Kris] - Development
 - Luke Harmon-Vellotti [moo, CheeseMuffin] - Development
 - Russell Jones [SadisticMystic] - Research (game mechanics)
 - Spandan Punwatkar [spandan]- Development

@@ -8,13 +8,14 @@
  * Specifically, this is the file that handles calculating and keeping
  * track of players' Elo ratings for all formats.
  *
- * Matchmaking is currently still implemented in rooms.ts.
+ * Matchmaking is currently still implemented in rooms.js.
  *
  * @license MIT
  */
 
+'use strict';
+
 import {FS} from '../lib/fs';
-import {Utils} from '../lib/utils';
 
 // ladderCaches = {formatid: ladder OR Promise(ladder)}
 // Use Ladders(formatid).ladder to guarantee a Promise(ladder).
@@ -32,8 +33,8 @@ export class LadderStore {
 	ladder: LadderRow[] | null;
 	ladderPromise: Promise<LadderRow[]> | null;
 	saving: boolean;
-	static readonly formatsListPrefix = '|,LL';
-	static readonly ladderCaches = ladderCaches;
+	static formatsListPrefix = '|,LL';
+	static ladderCaches = ladderCaches;
 
 	constructor(formatid: string) {
 		this.formatid = formatid;
@@ -96,11 +97,12 @@ export class LadderStore {
 			return;
 		}
 		const stream = FS(`config/ladders/${this.formatid}.tsv`).createWriteStream();
-		void stream.write('Elo\tUsername\tW\tL\tT\tLast update\r\n');
+		stream.write('Elo\tUsername\tW\tL\tT\tLast update\r\n');
 		for (const row of ladder) {
-			void stream.write(row.slice(1).join('\t') + '\r\n');
+			stream.write(row.slice(1).join('\t') + '\r\n');
 		}
-		void stream.writeEnd();
+		// tslint:disable-next-line no-floating-promises
+		stream.end();
 		this.saving = false;
 	}
 
@@ -151,7 +153,7 @@ export class LadderStore {
 	async getRating(userid: string) {
 		const formatid = this.formatid;
 		const user = Users.getExact(userid);
-		if (user?.mmrCache[formatid]) {
+		if (user && user.mmrCache[formatid]) {
 			return user.mmrCache[formatid];
 		}
 		const ladder = await this.getLadder();
@@ -160,7 +162,7 @@ export class LadderStore {
 		if (index >= 0) {
 			rating = ladder[index][1];
 		}
-		if (user && user.id === userid) {
+		if (user && user.userid === userid) {
 			user.mmrCache[formatid] = rating;
 		}
 		return rating;
@@ -276,7 +278,8 @@ export class LadderStore {
 			if (p1) p1.mmrCache[formatid] = +p1newElo;
 			const p2 = Users.getExact(p2name);
 			if (p2) p2.mmrCache[formatid] = +p2newElo;
-			void this.save();
+			// tslint:disable-next-line no-floating-promises
+			this.save();
 
 			if (!room.battle) {
 				Monitor.warn(`room expired before ladder update was received`);
@@ -286,13 +289,13 @@ export class LadderStore {
 			let reasons = '' + (Math.round(p1newElo) - Math.round(p1elo)) + ' for ' + (p1score > 0.9 ? 'winning' : (p1score < 0.1 ? 'losing' : 'tying'));
 			if (reasons.charAt(0) !== '-') reasons = '+' + reasons;
 			room.addRaw(
-				Utils.html`${p1name}'s rating: ${Math.round(p1elo)} &rarr; <strong>${Math.round(p1newElo)}</strong><br />(${reasons})`
+				Chat.html`${p1name}'s rating: ${Math.round(p1elo)} &rarr; <strong>${Math.round(p1newElo)}</strong><br />(${reasons})`
 			);
 
 			reasons = '' + (Math.round(p2newElo) - Math.round(p2elo)) + ' for ' + (p2score > 0.9 ? 'winning' : (p2score < 0.1 ? 'losing' : 'tying'));
 			if (reasons.charAt(0) !== '-') reasons = '+' + reasons;
 			room.addRaw(
-				Utils.html`${p2name}'s rating: ${Math.round(p2elo)} &rarr; <strong>${Math.round(p2newElo)}</strong><br />(${reasons})`
+				Chat.html`${p2name}'s rating: ${Math.round(p2elo)} &rarr; <strong>${Math.round(p2newElo)}</strong><br />(${reasons})`
 			);
 
 			room.update();

@@ -5,9 +5,6 @@
 		"namelocked": "用户名封锁",
 		"locked": "用户封锁",
 
-		"autoconfirmed": "自动确认用户",
-		"trusted": "信任用户",
-
 		"Please follow the rules:": "遵守规则:",
 		"[TN: Link to the PS rules for your language (path after pokemonshowdown.com]/rules": "/pages/rules-zh",
 		"Global Rules": "全站规则",
@@ -18,7 +15,8 @@
 		"% <strong>Global Driver</strong> - The above, and they can also lock users and check for alts": "% <strong>全服见习管理</strong> - 同上，并可以锁定用户或查看他们的小号",
 		"@ <strong>Global Moderator</strong> - The above, and they can globally ban users": "@ <strong>全服管理员</strong> - 同上，并可以将用户从服务器封禁",
 		"* <strong>Global Bot</strong> - Like Moderator, but makes it clear that this user is a bot": "* <strong>全服机器人</strong> - 跟全服管理员一样，只不过是机器",
-		"&amp; <strong>Global Administrator</strong> - They can do anything, like change what this message says and promote users globally": "&amp <strong>全服总管</strong> - 可以在服务器做任何事，例如修改你现在看到的这条信息",
+		"&amp; <strong>Global Leader</strong> - The above, and they can promote to global moderator and force ties": "&amp; <strong>全服领袖</strong> - 同上，并可以提拔用户至全服管理员、强制对战平局",
+		"~ <strong>Global Administrator</strong> -  They can do anything, like change what this message says": "~ <strong>全服总管</strong> - 可以在服务器做任何事，例如修改你现在看到的这条信息",
 
 		"<strong>Room ranks</strong>": "<strong>房权限</strong>",
 		"+ <strong>Voice</strong> - They can use ! commands like !groups": "+ <strong>信任用户</strong> - 可以使用!广播指令，比如!groups，并可以在限制发言期间发言",
@@ -38,9 +36,9 @@
 		"DATA COMMANDS": "数据指令",
 		"DRIVER COMMANDS": "见习管理指令",
 		"MODERATOR COMMANDS": "管理员指令",
-		"ADMIN COMMANDS": "总管指令",
+		"LEADER COMMANDS": "领袖指令",
 
-		"(replace / with ! to broadcast. Broadcasting requires: + % @ # &)": "(把/换成!就可以广播指令。广播功能需要：+ % @ # &)",
+		"(replace / with ! to broadcast. Broadcasting requires: + % @ # & ~)": "(把/换成!就可以广播指令。广播功能需要：+ % @ # & ~)",
 
 		"<strong>Room punishments</strong>:": "<strong>房间处罚</strong>:",
 		"<strong>warn</strong> - Displays a popup with the rules.": "<strong>warn</strong> - 显示规则与警告",
@@ -117,17 +115,6 @@
 
 		"Your message contained banned words in this room.": "发言内容包含了房间内禁止词汇",
 		"You can't send the same message again so soon.": "同样的句子不能及时发出",
-		"Due to this room being a high traffic room, your message must contain at least two letters.": "由于此房间流量较大，因此您的消息必须至少包含两个字母",
-
-		"You are already blocking private messages! To unblock, use /unblockpms": "您已屏蔽私信。若要恢复接收私信，请使用/unblockpms",
-		"You are now blocking private messages, except from staff and ${rank}.": "您已屏蔽私信，除了管理与${rank}权限以上的用户",
-		"You are now blocking private messages, except from staff and ${status} users.": "您已屏蔽私信，除了管理与${status}状态的用户",
-		"You are now blocking private messages, except from staff.": "您已屏蔽私信，除了管理用户",
-		"You are not blocking private messages! To block, use /blockpms": "您并未屏蔽私信。若要屏蔽私信，请使用/blockpms",
-		"You are no longer blocking private messages.": "您已停止屏蔽私信",
-		"You are now blocking all incoming challenge requests.": "您已屏蔽所有挑战请求",
-		"You are already blocking challenges!": "您已屏蔽挑战请求",
-		"You are already available for challenges!": "您已能够接收挑战请求",
-		"You are available for challenges from now on.": "您从现在开始接收挑战请求"
+		"Due to this room being a high traffic room, your message must contain at least two letters.": "由于此房间流量较大，因此您的消息必须至少包含两个字母"
 	}
 }
